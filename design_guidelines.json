@@ -1,0 +1,80 @@
+{
+  "theme": "light",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "brand_name": "Searce MDM",
+  "typography": {
+    "headings_font": "Chivo",
+    "body_font": "IBM Plex Sans",
+    "mono_font": "JetBrains Mono",
+    "scale": {
+      "h1": "text-3xl sm:text-4xl font-bold tracking-tight text-[#202124]",
+      "h2": "text-xl sm:text-2xl font-semibold tracking-tight text-[#202124]",
+      "h3": "text-lg font-medium text-[#202124]",
+      "body": "text-sm text-[#3C4043] leading-relaxed",
+      "small": "text-xs text-[#5F6368] uppercase tracking-[0.1em]"
+    }
+  },
+  "colors": {
+    "background": "#F8F9FA",
+    "surface": "#FFFFFF",
+    "primary": "#1A73E8",
+    "primary_hover": "#1557B0",
+    "text_primary": "#202124",
+    "text_secondary": "#5F6368",
+    "border": "#DADCE0",
+    "success": "#188038",
+    "warning": "#F29900",
+    "error": "#D93025",
+    "table_header_bg": "#F1F3F4",
+    "row_hover_bg": "#F8F9FA"
+  },
+  "layout_and_spacing": {
+    "page_padding": "p-6 md:p-8",
+    "card_style": "bg-[#FFFFFF] border border-[#DADCE0] rounded-md shadow-sm overflow-hidden",
+    "sidebar_width": "w-64",
+    "grid_strategy": "Control Room Grid: use tight gaps (gap-4) for data-heavy sections. Maximize vertical space.",
+    "alignment": "Left-align text and forms; center-align hero upload card; right-align numeric data in tables."
+  },
+  "component_instructions": {
+    "sidebar": "Fixed left navigation. Light grey background (#F8F9FA) with a 1px right border (#DADCE0). Highlight active route with #E8F0FE background and #1A73E8 text.",
+    "hero_upload_portal": "Centrally aligned card. Max width 2xl. Distinct drag-and-drop zone with a dashed border (#DADCE0). On drag over, change bg to #E8F0FE. Must resemble a GCP 'Create Resource' form.",
+    "attribute_config_grid": "Dense data table format. Row per attribute (Name, Phone, City). Columns: Attribute Name, Survivorship Intent (textarea with h-16 text-sm border-gray-300), Match Type (Toggle: Deterministic/Probabilistic), Weightage (Slider + Numeric Input side-by-side, max-w-[200px]).",
+    "strategy_summary_panel": "Plain English agent confirmation. Style as an 'Info Callout' box: border-l-4 border-[#1A73E8], bg-[#E8F0FE], text-[#1557B0]. Include a 'Confirm & Execute' button.",
+    "pipeline_visualization": "Horizontal node sequence (GCS -> Raw -> Staging -> Curated). Use simple rectangular cards connected by chevron arrows. Active/Completed nodes in green (#188038), Pending in gray (#5F6368).",
+    "results_tables": "Material Design 3 styled tables. Sticky headers. First column pinned. Right-align numeric columns like 'Suspect Score'. Use Shadcn table but override to dense padding (py-2 px-4).",
+    "sql_viewer": "Monospace text block. Dark theme (bg-[#202124], text-white) to create contrast against the light UI, matching IDE/Cloud Shell vibes. Include a 'Copy to Clipboard' button.",
+    "buttons": "Flat and functional. Primary buttons: bg-[#1A73E8] text-white hover:bg-[#1557B0] hover:shadow-md transition-all. Secondary: border border-[#DADCE0] text-[#1A73E8] hover:bg-[#E8F0FE]."
+  },
+  "motion_and_interactions": {
+    "hover_states": "Rows in tables should have hover:bg-[#F8F9FA]. Buttons should subtly lift or darken.",
+    "focus_states": "All inputs and buttons MUST have focus:ring-2 focus:ring-[#1A73E8] focus:outline-none.",
+    "transitions": "Use transition-colors duration-200 for buttons and links."
+  },
+  "accessibility": {
+    "testing_attributes": "All interactive and key informational elements MUST include a data-testid attribute in kebab-case. Example: data-testid='upload-submit-button'.",
+    "contrast_ratio": "Ensure 4.5:1 minimum contrast for text. Use text-[#202124] over #FFFFFF or #F8F9FA."
+  },
+  "libraries": {
+    "icons": "lucide-react (or @phosphor-icons/react if preferred for technical look). Command: yarn add @phosphor-icons/react",
+    "charts": "recharts"
+  },
+  "media": {
+    "image_urls": [
+      {
+        "url": "https://static.prod-images.emergentagent.com/jobs/bbda8876-35ac-4543-804b-2c3c6562ebab/images/be91dbdf491a4a0a61b93bb4e35fe4ff2adc16b0d46deaccc44fc09b7b3b8d75.png",
+        "description": "Searce MDM abstract logo icon",
+        "category": "logo"
+      },
+      {
+        "url": "https://static.prod-images.emergentagent.com/jobs/bbda8876-35ac-4543-804b-2c3c6562ebab/images/36ce651785e79743a8288b84f5d753aa06a32cc1a0f9059a0ecd4992ad94e23d.png",
+        "description": "Abstract data pipeline visual for empty states",
+        "category": "background"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1581094794329-c8112a89af12?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTF8MHwxfHNlYXJjaHwxfHxkYXRhJTIwZW5naW5lZXIlMjBwb3J0cmFpdHxlbnwwfHx8fDE3Nzg3NzU5Mjl8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Data Engineer Portrait",
+        "category": "avatar"
+      }
+    ]
+  }
+}
