@@ -37,17 +37,16 @@ SQL. Manage a 3-tier data lifecycle (Raw → Staging → Curated) entirely withi
 - BigQuery SQL is auditable and downloadable.
 - `user_intent_store.json` updated before pipeline → reproducible re-runs.
 
-## What's Implemented (2026-02-14)
-- Hero upload portal (CSV/Excel/JSON + bundled demo dataset).
-- Configure page with attribute grid (match type, slider+numeric weight, NL textarea, auto-normalize).
-- Agent Strategy page calling Gemini 3 Flash via Emergent key with deterministic fallback.
-- Pipeline visualization with 4 nodes + chevron flow + KPI stats.
-- Results page with Master + Suspect tabs (per-attribute match_explanation column).
-- Identity Search panel.
-- BigQuery SQL viewer with 5 tabs (Raw/Staging/Master/Suspect/SearchIndex), copy + download.
-- Audit trail with KPI dashboard.
-- Settings page editing `gcp_config.yaml`.
-- All routes guarded by job context in sidebar.
+## What's Implemented (updated 2026-02-14)
+- All v4.0 MVP features (hero upload, configure, agent strategy, pipeline, results, search, SQL viewer, audit, settings).
+- **Pagination** on Master/Suspect endpoints + Results table footer (default page = 50, prev/next buttons, `has_more` flag).
+- **Live-mode plumbing** for Vertex AI Gemini 2.5 Pro, BigQuery, and GCS via `mdm/gcp_client.py`:
+  - Detects placeholder service-account JSON and falls back to preview mode without crashing.
+  - On real credentials, upload → GCS, pipeline execute → BigQuery, agent → Vertex AI Gemini 2.5 Pro.
+  - Emergent Gemini 3 Flash is the LLM in preview mode; deterministic rule-based summary as final fallback.
+- `/api/health` reports `mode`, `vertex_ready`, `gcp_project`.
+- Pipeline execution response now includes `bq_state` (`stubbed_local`, `executed_on_bigquery`, or `bq_failed:<error>`).
+- Placeholder service-account JSON at `/app/backend/configs/gcp_service_account.json` — replace this single file with a real key to flip the app to live mode.
 
 ## API Endpoints (all `/api` prefixed)
 | Method | Path | Purpose |

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
 from mdm.agent import generate_strategy_summary
+from mdm.gcp_client import GCPUnavailable, get_gcp
 from mdm.matching_engine import run_pipeline
 from mdm.sql_generator import generate_pipeline_sql
 from mdm.storage import (
@@ -92,10 +93,13 @@ async def root():
 @api_router.get("/health")
 async def health():
     cfg = read_gcp_config()
+    gcp = get_gcp()
     return {
         "status": "ok",
-        "mode": cfg.get("mode", "preview"),
-        "vertex_ready": bool(os.environ.get("VERTEX_AI_CREDS_PATH")),
+        "mode": "live" if gcp.is_live else "preview",
+        "config_mode": cfg.get("mode", "preview"),
+        "vertex_ready": gcp.is_live,
+        "gcp_project": gcp.project_id,
         "llm_ready": bool(os.environ.get("EMERGENT_LLM_KEY")),
     }
 
@@ -114,6 +118,26 @@ async def upload_file(file: UploadFile = File(...)):
 
     columns = [str(c) for c in df.columns]
     sample = df.head(5).fillna("").astype(str).to_dict("records")
+
+    # Attempt GCS upload if we have live credentials
+    cfg = read_gcp_config()
+    bucket = cfg.get("gcs_bucket", "searce-mdm-landing")
+    gcs_uri = f"gs://{bucket}/landing/{job_id}/{file.filename}"
+    gcs_state = "stubbed_local"
+    gcp = get_gcp()
+    if gcp.is_live:
+        try:
+            gcs_uri = gcp.upload_to_gcs(
+                bucket=bucket,
+                blob_path=f"landing/{job_id}/{file.filename}",
+                content=content,
+                content_type=file.content_type or "text/csv",
+            )
+            gcs_state = "uploaded_to_gcs"
+        except (GCPUnavailable, Exception) as e:
+            logger.warning("[upload] GCS upload failed: %s — keeping local copy", e)
+            gcs_state = f"gcs_failed:{type(e).__name__}"
+
     await _record_job(
         job_id,
         {
@@ -124,6 +148,8 @@ async def upload_file(file: UploadFile = File(...)):
             "columns": columns,
             "sample": sample,
             "state": "gcs_landed",
+            "gcs_uri": gcs_uri,
+            "gcs_state": gcs_state,
             "created_at": datetime.now(timezone.utc).isoformat(),
         },
     )
@@ -133,7 +159,8 @@ async def upload_file(file: UploadFile = File(...)):
         "row_count": int(len(df)),
         "columns": columns,
         "sample": sample,
-        "gcs_uri": f"gs://searce-mdm-landing/landing/{job_id}/{file.filename}",
+        "gcs_uri": gcs_uri,
+        "gcs_state": gcs_state,
     }
 
 
@@ -233,6 +260,18 @@ async def execute_pipeline(job_id: str):
     gcp_cfg = read_gcp_config()
     sql = generate_pipeline_sql(intent, gcp_cfg)
 
+    # Attempt live BigQuery execution if creds are real
+    bq_state = "stubbed_local"
+    bq_jobs: Dict[str, Any] = {}
+    gcp = get_gcp()
+    if gcp.is_live:
+        try:
+            bq_jobs = gcp.run_bigquery_sql(sql)
+            bq_state = "executed_on_bigquery"
+        except (GCPUnavailable, Exception) as e:
+            logger.warning("[pipeline] BigQuery execution failed: %s — using local results", e)
+            bq_state = f"bq_failed:{type(e).__name__}"
+
     # Persist results into MongoDB (drop _id)
     await db.results.update_one(
         {"job_id": job_id},
@@ -243,6 +282,8 @@ async def execute_pipeline(job_id: str):
                 "suspect": result["suspect"],
                 "stats": result["stats"],
                 "sql": sql,
+                "bq_state": bq_state,
+                "bq_jobs": bq_jobs,
                 "computed_at": datetime.now(timezone.utc).isoformat(),
             }
         },
@@ -253,6 +294,7 @@ async def execute_pipeline(job_id: str):
         {
             "state": "curated",
             "stats": result["stats"],
+            "bq_state": bq_state,
             "lifecycle": {
                 "gcs_landed": True,
                 "raw": True,
@@ -261,7 +303,13 @@ async def execute_pipeline(job_id: str):
             },
         },
     )
-    return {"job_id": job_id, "stats": result["stats"], "sql_layers": list(sql.keys())}
+    return {
+        "job_id": job_id,
+        "stats": result["stats"],
+        "sql_layers": list(sql.keys()),
+        "bq_state": bq_state,
+        "bq_jobs": bq_jobs,
+    }
 
 
 @api_router.get("/pipeline/status/{job_id}")
@@ -280,21 +328,39 @@ async def pipeline_status(job_id: str):
 
 
 @api_router.get("/results/master/{job_id}")
-async def master_results(job_id: str, limit: int = 200):
+async def master_results(job_id: str, limit: int = 50, offset: int = 0):
     res = await db.results.find_one({"job_id": job_id}, {"_id": 0})
     if not res:
         raise HTTPException(status_code=404, detail="No results yet")
-    return {"job_id": job_id, "rows": res.get("master", [])[:limit],
-            "total": len(res.get("master", []))}
+    rows = res.get("master", [])
+    total = len(rows)
+    page = rows[offset : offset + limit]
+    return {
+        "job_id": job_id,
+        "rows": page,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + limit < total,
+    }
 
 
 @api_router.get("/results/suspect/{job_id}")
-async def suspect_results(job_id: str, limit: int = 200):
+async def suspect_results(job_id: str, limit: int = 50, offset: int = 0):
     res = await db.results.find_one({"job_id": job_id}, {"_id": 0})
     if not res:
         raise HTTPException(status_code=404, detail="No results yet")
     rows = sorted(res.get("suspect", []), key=lambda r: r.get("suspect_score", 0), reverse=True)
-    return {"job_id": job_id, "rows": rows[:limit], "total": len(rows)}
+    total = len(rows)
+    page = rows[offset : offset + limit]
+    return {
+        "job_id": job_id,
+        "rows": page,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + limit < total,
+    }
 
 
 @api_router.get("/search")

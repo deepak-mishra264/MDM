@@ -122,6 +122,104 @@
       ],
       "threshold": 0.75,
       "source_file": "demo_customers.csv"
+    },
+    "e32241d4cc92": {
+      "job_id": "e32241d4cc92",
+      "attributes": [
+        {
+          "name": "source_id",
+          "match_type": "deterministic",
+          "weight": 0.0,
+          "survivorship_intent": "If multiple values exist, pick the most recent non-null value (tie-break by frequency)."
+        },
+        {
+          "name": "FirstName",
+          "match_type": "probabilistic",
+          "weight": 20.0,
+          "survivorship_intent": "Pick the longest non-null value (treat as canonical full name)."
+        },
+        {
+          "name": "LastName",
+          "match_type": "probabilistic",
+          "weight": 20.0,
+          "survivorship_intent": "Pick the longest non-null value (treat as canonical full name)."
+        },
+        {
+          "name": "Email",
+          "match_type": "deterministic",
+          "weight": 0.0,
+          "survivorship_intent": "If multiple values exist, pick the most recent non-null value (tie-break by frequency)."
+        },
+        {
+          "name": "Phone",
+          "match_type": "probabilistic",
+          "weight": 20.0,
+          "survivorship_intent": "If multiple phone numbers exist, pick the one that appears most often, but if there is a tie, pick the most recent record."
+        },
+        {
+          "name": "City",
+          "match_type": "probabilistic",
+          "weight": 20.0,
+          "survivorship_intent": "Pick the most frequent value across the cluster."
+        },
+        {
+          "name": "Updated_TS",
+          "match_type": "probabilistic",
+          "weight": 20.0,
+          "survivorship_intent": "If multiple values exist, pick the most recent non-null value (tie-break by frequency)."
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "mdm_test_200.csv"
+    },
+    "9151867122b9": {
+      "job_id": "9151867122b9",
+      "attributes": [
+        {
+          "name": "customer_id",
+          "match_type": "none",
+          "weight": 0.0,
+          "survivorship_intent": ""
+        },
+        {
+          "name": "first_name",
+          "match_type": "probabilistic",
+          "weight": 30.0,
+          "survivorship_intent": "Pick longest"
+        },
+        {
+          "name": "last_name",
+          "match_type": "probabilistic",
+          "weight": 20.0,
+          "survivorship_intent": "Pick most frequent"
+        },
+        {
+          "name": "email",
+          "match_type": "deterministic",
+          "weight": 0.0,
+          "survivorship_intent": "Pick most recent"
+        },
+        {
+          "name": "phone",
+          "match_type": "probabilistic",
+          "weight": 30.0,
+          "survivorship_intent": "Pick most frequent"
+        },
+        {
+          "name": "city",
+          "match_type": "probabilistic",
+          "weight": 10.0,
+          "survivorship_intent": "Pick most frequent"
+        },
+        {
+          "name": "country",
+          "match_type": "probabilistic",
+          "weight": 10.0,
+          "survivorship_intent": "Pick most frequent"
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
     }
   }
 }
