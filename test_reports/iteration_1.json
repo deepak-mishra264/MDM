@@ -1,0 +1,41 @@
+{
+  "summary": "First testing run for Searce MDM. Created /app/backend/tests/test_mdm_api.py — 16/16 pytest tests pass against the public REACT_APP_BACKEND_URL. UI smoke-tested with Playwright: hero, demo load -> configure -> strategy -> pipeline -> results -> SQL -> audit -> settings pages all render. Toggle/normalize/save flow on Configure works; backend correctly rejects probabilistic weights summing to 99 or 101 and accepts 100. Strategy endpoint returns summary + survivorship_breakdown + backend label via Emergent Gemini 3 Flash. Pipeline execution produces unique_masters>0 and duplicate_suspects>0 on the bundled 20-row demo dataset (cluster of John/Jon/Johnny Doe etc). 5 SQL layers generated and downloadable as plain-text blob.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Configure -> Save & Continue", "issue": "In one Playwright run, clicking save-and-continue-btn while the 'Weights normalized to 100%' toast stack was visible did not navigate to /strategy/{jobId} (URL stayed on /configure/). Could be toast overlay intercepting clicks or stale state after rapid input edits. First test run navigated successfully. Possible flake — main agent should verify timing/disable button while saving and clear toasts.", "selector": "[data-testid=save-and-continue-btn]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Pipeline page", "issues": ["Page only polls /pipeline/status; this is correct because execution is triggered from Strategy page via [data-testid=confirm-execute-btn]. Documenting for next agent — direct deep-link to /pipeline/{jobId} without going through Strategy shows zeros until execution happens."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_mdm_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Verify Configure 'Save & Continue' reliably navigates to /strategy/{jobId} even when toasts are stacking. Consider awaiting axios response before navigate and showing a button loading state.",
+    "Consider auto-running /pipeline/execute on /pipeline/{jobId} mount if not yet executed (currently only Strategy page kicks it off). Otherwise add a banner/Execute button on the Pipeline page for deep-link entry."
+  ],
+  "critical_code_review_comments": [
+    "server.py uses os.environ['MONGO_URL'] (good — fails fast). Mongo _id is correctly excluded with {\"_id\":0} projections throughout. ✓",
+    "matching_engine.run_pipeline is O(N^2) — fine for preview/demo (20 rows) but will not scale; that's expected since real matching runs in BigQuery.",
+    "agent.py LLM call is wrapped in try/except with deterministic fallback — robust. backend label correctly toggles based on VERTEX_AI_CREDS_PATH.",
+    "Pipeline.jsx only polls status; if user deep-links to /pipeline/{jobId} without going via Strategy, page shows zeros indefinitely (no auto-execute fallback).",
+    "intent_save validates weight sum strictly == 100 with 0.01 tolerance — matches PRD requirement exactly.",
+    "All 13+ frontend interactive elements have data-testid attributes (excellent testability).",
+    "Frontend build emits some 404s in console (likely missing favicon/source map) — non-blocking but worth a quick check."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_mdm_api.py (new)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "~90% (core flow works; one Save & Continue flake observed)"},
+  "seed_data_creation": "Used POST /api/demo/load which seeds 20 demo rows from /app/backend/configs/demo_customers.csv with known duplicates (John/Jon/Johnny Doe; Jane/Janet Smith; etc.)",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite at /app/backend/tests/test_mdm_api.py — run with: cd /app/backend && pytest tests/test_mdm_api.py -v. Public URL via REACT_APP_BACKEND_URL. Demo job_id is generated each call. Configure page testids: match-deterministic-{col}, match-probabilistic-{col}, match-none-{col}, weight-slider-{col}, weight-input-{col}, survivorship-textarea-{col}, weight-total-badge, normalize-weights-btn, save-and-continue-btn. Strategy page: strategy-summary-callout, survivorship-breakdown-card, confirm-execute-btn, regenerate-strategy-btn. Pipeline page: pipeline-node-{gcs_landed|raw|staging|curated}, stat-{label-kebab}, view-sql-btn, view-results-btn."
+}

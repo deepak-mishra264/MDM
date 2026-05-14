@@ -1,0 +1,127 @@
+{
+  "jobs": {
+    "d4e7e5179c34": {
+      "job_id": "d4e7e5179c34",
+      "attributes": [
+        {
+          "name": "customer_id",
+          "match_type": "none",
+          "weight": 0.0,
+          "survivorship_intent": ""
+        },
+        {
+          "name": "first_name",
+          "match_type": "probabilistic",
+          "weight": 30.0,
+          "survivorship_intent": "Pick the longest non-null value"
+        },
+        {
+          "name": "last_name",
+          "match_type": "probabilistic",
+          "weight": 20.0,
+          "survivorship_intent": "Pick the most frequent value"
+        },
+        {
+          "name": "email",
+          "match_type": "deterministic",
+          "weight": 0.0,
+          "survivorship_intent": "Pick the most recent"
+        },
+        {
+          "name": "phone",
+          "match_type": "probabilistic",
+          "weight": 30.0,
+          "survivorship_intent": "Pick the one that appears most often, tie-break by most recent"
+        },
+        {
+          "name": "city",
+          "match_type": "probabilistic",
+          "weight": 10.0,
+          "survivorship_intent": "Pick the most frequent"
+        },
+        {
+          "name": "country",
+          "match_type": "probabilistic",
+          "weight": 10.0,
+          "survivorship_intent": "Pick the most frequent"
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
+    },
+    "c1de89d4d9b5": {
+      "job_id": "c1de89d4d9b5",
+      "attributes": [
+        {
+          "name": "customer_id",
+          "match_type": "deterministic",
+          "weight": 0.0,
+          "survivorship_intent": "If multiple values exist, pick the most recent non-null value (tie-break by frequency)."
+        },
+        {
+          "name": "first_name",
+          "match_type": "probabilistic",
+          "weight": 20.0,
+          "survivorship_intent": "Pick the longest non-null value (treat as canonical full name)."
+        },
+        {
+          "name": "last_name",
+          "match_type": "probabilistic",
+          "weight": 20.0,
+          "survivorship_intent": "Pick the longest non-null value (treat as canonical full name)."
+        },
+        {
+          "name": "email",
+          "match_type": "deterministic",
+          "weight": 0.0,
+          "survivorship_intent": "If multiple values exist, pick the most recent non-null value (tie-break by frequency)."
+        },
+        {
+          "name": "phone",
+          "match_type": "probabilistic",
+          "weight": 20.0,
+          "survivorship_intent": "If multiple phone numbers exist, pick the one that appears most often, but if there is a tie, pick the most recent record."
+        },
+        {
+          "name": "city",
+          "match_type": "probabilistic",
+          "weight": 20.0,
+          "survivorship_intent": "Pick the most frequent value across the cluster."
+        },
+        {
+          "name": "country",
+          "match_type": "probabilistic",
+          "weight": 20.0,
+          "survivorship_intent": "Pick the most frequent value across the cluster."
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
+    },
+    "9e76849e9a7f": {
+      "job_id": "9e76849e9a7f",
+      "attributes": [
+        {
+          "name": "first_name",
+          "match_type": "probabilistic",
+          "weight": 40.0,
+          "survivorship_intent": "most recent"
+        },
+        {
+          "name": "last_name",
+          "match_type": "probabilistic",
+          "weight": 30.0,
+          "survivorship_intent": "longest"
+        },
+        {
+          "name": "email",
+          "match_type": "probabilistic",
+          "weight": 30.0,
+          "survivorship_intent": "most frequent"
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
+    }
+  }
+}

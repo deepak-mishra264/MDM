@@ -1,54 +1,37 @@
-import { useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "@/components/ui/sonner";
+import Layout from "@/components/Layout";
+import Home from "@/pages/Home";
+import Configure from "@/pages/Configure";
+import Strategy from "@/pages/Strategy";
+import Pipeline from "@/pages/Pipeline";
+import Results from "@/pages/Results";
+import IdentitySearch from "@/pages/IdentitySearch";
+import SQLViewer from "@/pages/SQLViewer";
+import Audit from "@/pages/Audit";
+import Settings from "@/pages/Settings";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
+export default function App() {
   return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
-
-function App() {
-  return (
-    <div className="App">
+    <div className="App" data-testid="searce-mdm-app">
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
+          <Route element={<Layout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/configure/:jobId" element={<Configure />} />
+            <Route path="/strategy/:jobId" element={<Strategy />} />
+            <Route path="/pipeline/:jobId" element={<Pipeline />} />
+            <Route path="/results/:jobId" element={<Results />} />
+            <Route path="/search/:jobId" element={<IdentitySearch />} />
+            <Route path="/sql/:jobId" element={<SQLViewer />} />
+            <Route path="/audit" element={<Audit />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>
+      <Toaster position="bottom-right" richColors />
     </div>
   );
 }
-
-export default App;

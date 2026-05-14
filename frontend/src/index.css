@@ -2,114 +2,148 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ----- Fonts: Chivo (headings) + IBM Plex Sans (body) + JetBrains Mono (code) ----- */
+@import url('https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 body {
-    margin: 0;
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-        "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-        sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #F8F9FA;
+  color: #202124;
 }
 
-code {
-    font-family:
-        source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+code, pre, .mono {
+  font-family: 'JetBrains Mono', Menlo, Monaco, Consolas, monospace;
 }
 
-@layer base {
-    :root {
-        --background: 0 0% 100%;
-        --foreground: 0 0% 3.9%;
-        --card: 0 0% 100%;
-        --card-foreground: 0 0% 3.9%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 3.9%;
-        --primary: 0 0% 9%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 0 0% 96.1%;
-        --secondary-foreground: 0 0% 9%;
-        --muted: 0 0% 96.1%;
-        --muted-foreground: 0 0% 45.1%;
-        --accent: 0 0% 96.1%;
-        --accent-foreground: 0 0% 9%;
-        --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 89.8%;
-        --input: 0 0% 89.8%;
-        --ring: 0 0% 3.9%;
-        --chart-1: 12 76% 61%;
-        --chart-2: 173 58% 39%;
-        --chart-3: 197 37% 24%;
-        --chart-4: 43 74% 66%;
-        --chart-5: 27 87% 67%;
-        --radius: 0.5rem;
-    }
-    .dark {
-        --background: 0 0% 3.9%;
-        --foreground: 0 0% 98%;
-        --card: 0 0% 3.9%;
-        --card-foreground: 0 0% 98%;
-        --popover: 0 0% 3.9%;
-        --popover-foreground: 0 0% 98%;
-        --primary: 0 0% 98%;
-        --primary-foreground: 0 0% 9%;
-        --secondary: 0 0% 14.9%;
-        --secondary-foreground: 0 0% 98%;
-        --muted: 0 0% 14.9%;
-        --muted-foreground: 0 0% 63.9%;
-        --accent: 0 0% 14.9%;
-        --accent-foreground: 0 0% 98%;
-        --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 14.9%;
-        --input: 0 0% 14.9%;
-        --ring: 0 0% 83.1%;
-        --chart-1: 220 70% 50%;
-        --chart-2: 160 60% 45%;
-        --chart-3: 30 80% 55%;
-        --chart-4: 280 65% 60%;
-        --chart-5: 340 75% 55%;
-    }
+.font-display {
+  font-family: 'Chivo', 'IBM Plex Sans', sans-serif;
+  letter-spacing: -0.01em;
 }
 
 @layer base {
-    * {
-        @apply border-border;
-    }
-    body {
-        @apply bg-background text-foreground;
-    }
+  :root {
+    --background: 210 17% 98%;
+    --foreground: 210 6% 13%;
+    --card: 0 0% 100%;
+    --card-foreground: 210 6% 13%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 6% 13%;
+    --primary: 213 82% 51%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 17% 95%;
+    --secondary-foreground: 210 6% 13%;
+    --muted: 210 17% 95%;
+    --muted-foreground: 220 4% 39%;
+    --accent: 213 94% 95%;
+    --accent-foreground: 213 82% 35%;
+    --destructive: 4 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 9% 86%;
+    --input: 210 9% 86%;
+    --ring: 213 82% 51%;
+    --radius: 0.5rem;
+  }
 }
 
 @layer base {
-    [data-debug-wrapper="true"] {
-        display: contents !important;
-    }
-
-    [data-debug-wrapper="true"] > * {
-        margin-left: inherit;
-        margin-right: inherit;
-        margin-top: inherit;
-        margin-bottom: inherit;
-        padding-left: inherit;
-        padding-right: inherit;
-        padding-top: inherit;
-        padding-bottom: inherit;
-        column-gap: inherit;
-        row-gap: inherit;
-        gap: inherit;
-        border-left-width: inherit;
-        border-right-width: inherit;
-        border-top-width: inherit;
-        border-bottom-width: inherit;
-        border-left-style: inherit;
-        border-right-style: inherit;
-        border-top-style: inherit;
-        border-bottom-style: inherit;
-        border-left-color: inherit;
-        border-right-color: inherit;
-        border-top-color: inherit;
-        border-bottom-color: inherit;
-    }
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
 }
+
+/* ---- Custom scrollbar (Google-styled) ---- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #DADCE0; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #BDC1C6; }
+
+/* ---- Grid background ---- */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, #DADCE0 1px, transparent 1px),
+    linear-gradient(to bottom, #DADCE0 1px, transparent 1px);
+  background-size: 36px 36px;
+  background-position: -1px -1px;
+  mask-image: radial-gradient(ellipse 60% 50% at 50% 30%, #000 30%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 30%, #000 30%, transparent 70%);
+}
+
+/* ---- Drop zone interactive states ---- */
+.drop-zone {
+  transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+.drop-zone.active {
+  background-color: #E8F0FE;
+  border-color: #1A73E8;
+  box-shadow: 0 0 0 4px rgba(26, 115, 232, 0.10);
+}
+
+/* ---- Card lift ---- */
+.lift {
+  transition: box-shadow 220ms ease, transform 220ms ease, border-color 220ms ease;
+}
+.lift:hover {
+  box-shadow: 0 6px 20px -8px rgba(60,64,67,0.18);
+  border-color: #1A73E8;
+}
+
+/* ---- Chevron divider ---- */
+.chevron-after::after {
+  content: '';
+  position: absolute;
+  right: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0; height: 0;
+  border-top: 14px solid transparent;
+  border-bottom: 14px solid transparent;
+  border-left: 14px solid #FFFFFF;
+  filter: drop-shadow(1px 0 0 #DADCE0);
+}
+
+/* ---- Pipeline node states ---- */
+.node-done { background: #E6F4EA; color: #188038; border-color: #CEEAD6; }
+.node-active { background: #E8F0FE; color: #1A73E8; border-color: #1A73E8; }
+.node-pending { background: #F8F9FA; color: #5F6368; border-color: #DADCE0; }
+
+/* ---- SQL viewer ---- */
+.sql-block {
+  background: #1F2024;
+  color: #E8EAED;
+  border-radius: 8px;
+  padding: 20px 22px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre;
+  overflow-x: auto;
+}
+.sql-comment { color: #9AA0A6; }
+.sql-keyword { color: #8AB4F8; font-weight: 600; }
+.sql-string { color: #FBBC04; }
+
+/* ---- Focus rings ---- */
+button:focus-visible, [role="button"]:focus-visible, input:focus-visible,
+textarea:focus-visible, select:focus-visible {
+  outline: 2px solid #1A73E8;
+  outline-offset: 2px;
+}
+
+/* Hide ugly default scroll arrows on table */
+.table-dense th, .table-dense td { padding: 8px 16px !important; font-size: 13px; }
+.table-dense th { background: #F1F3F4; color: #5F6368; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; font-size: 11px; }
+
+/* Reveal animation */
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.reveal { animation: reveal 380ms ease both; }
+.reveal-delay-1 { animation-delay: 60ms; }
+.reveal-delay-2 { animation-delay: 120ms; }
+.reveal-delay-3 { animation-delay: 200ms; }
+
+/* selection */
+::selection { background: #1A73E8; color: #ffffff; }

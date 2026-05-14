@@ -25,3 +25,8 @@ python-multipart>=0.0.9
 jq>=1.6.0
 typer>=0.9.0
 emergentintegrations==0.1.0
+
+jellyfish==1.2.1
+rapidfuzz==3.14.5
+openpyxl==3.1.5
+pyyaml>=6.0
