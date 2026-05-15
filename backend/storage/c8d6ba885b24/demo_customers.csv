@@ -1,0 +1,21 @@
+customer_id,first_name,last_name,email,phone,city,country
+1001,John,Doe,john.doe@acme.com,+1-415-555-2671,San Francisco,USA
+1002,Jon,Doe,j.doe@acme.com,4155552671,san francisco,USA
+1003,Johnny,Doe,john.doe@acme.com,(415) 555-2671,SF,USA
+1004,Jane,Smith,jane.s@globex.io,+44 20 7946 0958,London,UK
+1005,Janet,Smyth,jane.s@globex.io,02079460958,London,UK
+1006,Robert,Brown,bob@initech.com,+1-212-555-0142,New York,USA
+1007,Bob,Brown,robert.brown@initech.com,2125550142,NYC,USA
+1008,Alice,Johnson,alice@umbrella.org,+1-303-555-9933,Denver,USA
+1009,Alicia,Jonson,alice.j@umbrella.org,303 555 9933,Denver,USA
+1010,Michael,Davis,m.davis@stark.com,+1-650-555-7212,Palo Alto,USA
+1011,Mike,Davies,michael.d@stark.com,6505557212,palo alto,USA
+1012,Sara,Connor,sara.connor@skynet.ai,+1-818-555-0101,Los Angeles,USA
+1013,Sarah,O'Connor,sara@skynet.ai,8185550101,LA,USA
+1014,Tom,Hanks,t.hanks@playtone.com,+1-310-555-3010,Beverly Hills,USA
+1015,Thomas,Hanks,tom.hanks@playtone.com,3105553010,Beverly Hills,USA
+1016,Linda,Martinez,linda.m@nimbus.dev,+1-512-555-7788,Austin,USA
+1017,Lindy,Martinez,l.martinez@nimbus.dev,5125557788,Austin,USA
+1018,Carlos,Reyes,carlos@oceanic.co,+34 91 555 4422,Madrid,Spain
+1019,Karl,Reyez,carlos.reyes@oceanic.co,915554422,madrid,Spain
+1020,Emma,Stone,emma.s@horizon.io,+1-415-555-9090,San Francisco,USA

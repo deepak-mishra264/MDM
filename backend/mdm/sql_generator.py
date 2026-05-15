@@ -33,9 +33,7 @@ def _rule_to_sql_agg(col: str, rule_text: str) -> str:
         )
     if "frequent" in p or "most often" in p or "mode" in p or "majority" in p:
         return (
-            f"(SELECT v FROM UNNEST(ARRAY_AGG({col} IGNORE NULLS)) v "
-            f"GROUP BY v ORDER BY COUNT(*) DESC, ANY_VALUE(ingested_at) DESC LIMIT 1) "
-            f"AS golden_{col}"
+            f"APPROX_TOP_COUNT({col}, 1)[SAFE_OFFSET(0)].value AS golden_{col}"
         )
     if "first" in p or "earliest" in p or "oldest" in p:
         return (
@@ -72,17 +70,16 @@ def generate_pipeline_sql(intent: Dict[str, Any], gcp_config: Dict[str, Any]) ->
     fq = f"`{project}.{dataset}"
 
     # ---------- 1. GCS -> Raw ----------
+    # NOTE: column list must match the CSV exactly (no metadata cols here —
+    # those are added in the Staging stage).
     raw_cols_sql = ",\n".join([f"  {_sanitize(c)} STRING" for c in all_input_cols])
     raw_sql = f"""-- ============================================================
 -- STATE 1 & 2: GCS Landing -> Raw Layer (Partitioned)
 -- ============================================================
 LOAD DATA OVERWRITE {fq}.{raw_t}_{job_id}`
 (
-{raw_cols_sql},
-  source_file STRING,
-  ingested_at TIMESTAMP
+{raw_cols_sql}
 )
-PARTITION BY DATE(ingested_at)
 OPTIONS(description = "Raw landing for job {job_id}")
 FROM FILES (
   format = 'CSV',
@@ -90,7 +87,7 @@ FROM FILES (
   skip_leading_rows = 1
 );"""
 
-    # ---------- 2. Staging ----------
+    # ---------- 2. Staging (adds metadata + UUID) ----------
     norm = []
     for c in all_input_cols:
         sc = _sanitize(c)
@@ -108,7 +105,7 @@ CREATE OR REPLACE TABLE {fq}.{stg_t}_{job_id}`
 PARTITION BY DATE(ingested_at) AS
 SELECT
 {(',' + chr(10)).join(['  ' + n for n in norm])},
-  source_file,
+  '{source_file}' AS source_file,
   CURRENT_TIMESTAMP() AS ingested_at,
   GENERATE_UUID() AS record_uid
 FROM {fq}.{raw_t}_{job_id}`
@@ -167,15 +164,29 @@ WITH pairs AS (
   JOIN {fq}.{stg_t}_{job_id}` b
     ON a.record_uid < b.record_uid
 ),
-clusters AS (
-  SELECT uid_a AS uid, MIN(uid_b) AS cluster_root
-  FROM pairs WHERE score >= {threshold}
-  GROUP BY uid_a
+matched_pairs AS (
+  SELECT * FROM pairs WHERE score >= {threshold}
+),
+edge_clusters AS (
+  SELECT uid_a AS uid, uid_b AS cluster_root FROM matched_pairs
+  UNION ALL
+  SELECT uid_b AS uid, uid_a AS cluster_root FROM matched_pairs
   UNION ALL
   SELECT record_uid, record_uid FROM {fq}.{stg_t}_{job_id}`
 ),
 final_clusters AS (
-  SELECT uid, MIN(cluster_root) AS enterprise_id FROM clusters GROUP BY uid
+  SELECT uid, MIN(cluster_root) AS enterprise_id FROM edge_clusters GROUP BY uid
+),
+cluster_methods AS (
+  SELECT
+    fc.enterprise_id,
+    MAX(IF(mp.method = 'deterministic', 1, 0)) AS has_det,
+    MAX(IF(mp.method = 'probabilistic', 1, 0)) AS has_prob,
+    COUNT(DISTINCT fc.uid) AS source_count
+  FROM final_clusters fc
+  LEFT JOIN matched_pairs mp
+    ON mp.uid_a = fc.uid OR mp.uid_b = fc.uid
+  GROUP BY fc.enterprise_id
 ),
 joined AS (
   SELECT s.*, fc.enterprise_id
@@ -183,18 +194,18 @@ joined AS (
   JOIN final_clusters fc ON s.record_uid = fc.uid
 )
 SELECT
-  enterprise_id,
+  j.enterprise_id,
   CASE
-    WHEN COUNT(*) = 1 THEN 'unique'
-    WHEN MAX(IF({det_join.replace("a.", "j1.").replace("b.", "j2.")}, 1, 0)) = 1 THEN 'deterministic'
+    WHEN cm.source_count = 1 THEN 'unique'
+    WHEN cm.has_det = 1 THEN 'deterministic'
     ELSE 'probabilistic'
   END AS match_method,
-{(',' + chr(10)).join(golden_lines) or "  ANY_VALUE(record_uid) AS golden_record_uid"},
+{(',' + chr(10)).join(golden_lines) or "  ANY_VALUE(j.record_uid) AS golden_record_uid"},
   COUNT(*) AS source_record_count,
   CURRENT_TIMESTAMP() AS ingested_at
-FROM joined j1
-LEFT JOIN joined j2 USING (enterprise_id)
-GROUP BY enterprise_id;"""
+FROM joined j
+JOIN cluster_methods cm USING (enterprise_id)
+GROUP BY j.enterprise_id, cm.source_count, cm.has_det;"""
 
     # ---------- 4. Suspect ----------
     explain_terms = []
@@ -219,6 +230,19 @@ WITH pairs AS (
     CASE WHEN {det_join} THEN 'deterministic' ELSE 'probabilistic' END AS method
   FROM {fq}.{stg_t}_{job_id}` a
   JOIN {fq}.{stg_t}_{job_id}` b ON a.record_uid < b.record_uid
+),
+matched_pairs AS (
+  SELECT * FROM pairs WHERE score >= {threshold}
+),
+edge_clusters AS (
+  SELECT uid_a AS uid, uid_b AS cluster_root FROM matched_pairs
+  UNION ALL
+  SELECT uid_b AS uid, uid_a AS cluster_root FROM matched_pairs
+  UNION ALL
+  SELECT record_uid, record_uid FROM {fq}.{stg_t}_{job_id}`
+),
+final_clusters AS (
+  SELECT uid, MIN(cluster_root) AS enterprise_id FROM edge_clusters GROUP BY uid
 )
 SELECT
   fc.enterprise_id AS parent_enterprise_id,
@@ -228,11 +252,10 @@ SELECT
   {explain_expr} AS match_explanation,
 {(',' + chr(10)).join([f'  a.{_sanitize(c)}' for c in all_input_cols]) or '  a.record_uid'},
   CURRENT_TIMESTAMP() AS ingested_at
-FROM pairs p
+FROM matched_pairs p
 JOIN {fq}.{stg_t}_{job_id}` a ON a.record_uid = p.uid_a
 JOIN {fq}.{stg_t}_{job_id}` b ON b.record_uid = p.uid_b
-JOIN final_clusters fc ON fc.uid = a.record_uid
-WHERE p.score >= {threshold};"""
+JOIN final_clusters fc ON fc.uid = a.record_uid;"""
 
     # ---------- 5. Search Index ----------
     index_sql = f"""-- ============================================================

@@ -37,17 +37,20 @@ SQL. Manage a 3-tier data lifecycle (Raw → Staging → Curated) entirely withi
 - BigQuery SQL is auditable and downloadable.
 - `user_intent_store.json` updated before pipeline → reproducible re-runs.
 
-## What's Implemented (updated 2026-02-15)
-- **Configure step redesigned**: column multi-select dropdown (shadcn Popover + Command), per-column weight (slider + numeric input), separate Survivorship Rules section with column dropdown + precedence number + plain-English textarea. Lower precedence wins when multiple rules target the same column.
-- **Unified matching**: selected columns now drive BOTH the deterministic (all-equal) and probabilistic (weighted fuzzy) engines.
-- **Staged async pipeline execution** with live progress:
-  - `POST /pipeline/execute/{job_id}` returns immediately with `state=running`.
-  - `GET /pipeline/progress/{job_id}` returns 10 staged steps: validating → standardizing → deterministic → probabilistic → embedding → clustering → survivorship → sql → bigquery → complete.
-  - Each stage emits `state` (pending/running/done/failed/skipped), `detail` (counts/notes), `started_at`, `finished_at`.
-  - Frontend `Pipeline.jsx` polls every 800ms and renders a vertical timeline with spinner / done / skipped indicators + ms durations.
-- **Pagination** on Master/Suspect (50/page, prev/next).
-- **Live-mode plumbing** for Vertex AI Gemini 2.5 Pro + BigQuery + GCS via `mdm/gcp_client.py`. Placeholder service-account at `/app/backend/configs/gcp_service_account.json` — replace to enable live mode.
-- Backend pipeline persists golden records with numpy-safe `_to_python` coercion (no Mongo encoding errors).
+## What's Implemented (updated 2026-02-15 · LIVE MODE)
+- **LIVE GCP MODE active** with the user's real service-account JSON (`searce-practice-data-analytics` project):
+  - Vertex AI Gemini 2.5 Pro generates the Strategy Summary
+  - GCS uploads CSV to `gs://searce-mdm-landing/landing/<job_id>/` (bucket auto-created)
+  - BigQuery dataset `searce_mdm` auto-created; raw_layer/staging/master/suspect/search_index DDL+DML executed
+- `/api/health` returns `mode=live`, `vertex_ready=true`, `gcp_project=searce-practice-data-analytics`. Sidebar shows green "Live mode · GCP active · Project · …".
+- **SQL hardening** for live BigQuery:
+  - LOAD DATA column list matches CSV exactly (metadata added in Staging stage)
+  - "Most frequent" rule uses `APPROX_TOP_COUNT(col, 1)[SAFE_OFFSET(0)].value`
+  - Clustering uses bi-directional edge union (uid_a↔uid_b) so all merged records share an enterprise_id
+- All previous features preserved: column multi-select, survivorship rules with precedence, staged async pipeline with 10-step live progress, pagination, audit, identity search, SQL viewer with copy/download.
+
+## Verified Live in BigQuery
+- Demo dataset of 20 customer rows produced 13 master records (6 probabilistic clusters + 7 unique) in `searce_mdm.curated_master`, plus a populated `searce_mdm.curated_suspect` with suspect_score values in BigQuery.
 
 ## API Endpoints (all `/api` prefixed)
 | Method | Path | Purpose |

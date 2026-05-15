@@ -409,6 +409,131 @@
       ],
       "threshold": 0.75,
       "source_file": "mdm_test_200.csv"
+    },
+    "06190b505572": {
+      "job_id": "06190b505572",
+      "match_columns": [
+        {
+          "name": "first_name",
+          "weight": 30.0
+        },
+        {
+          "name": "last_name",
+          "weight": 20.0
+        },
+        {
+          "name": "email",
+          "weight": 20.0
+        },
+        {
+          "name": "phone",
+          "weight": 30.0
+        }
+      ],
+      "survivorship_rules": [
+        {
+          "column": "phone",
+          "rule": "Pick the most frequent",
+          "precedence": 1
+        },
+        {
+          "column": "first_name",
+          "rule": "Pick the longest",
+          "precedence": 2
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
+    },
+    "deca7f0806d4": {
+      "job_id": "deca7f0806d4",
+      "match_columns": [
+        {
+          "name": "first_name",
+          "weight": 30.0
+        },
+        {
+          "name": "last_name",
+          "weight": 20.0
+        },
+        {
+          "name": "email",
+          "weight": 20.0
+        },
+        {
+          "name": "phone",
+          "weight": 30.0
+        }
+      ],
+      "survivorship_rules": [
+        {
+          "column": "phone",
+          "rule": "Pick the most frequent",
+          "precedence": 1
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
+    },
+    "9cea6d0818aa": {
+      "job_id": "9cea6d0818aa",
+      "match_columns": [
+        {
+          "name": "first_name",
+          "weight": 30.0
+        },
+        {
+          "name": "last_name",
+          "weight": 20.0
+        },
+        {
+          "name": "email",
+          "weight": 20.0
+        },
+        {
+          "name": "phone",
+          "weight": 30.0
+        }
+      ],
+      "survivorship_rules": [
+        {
+          "column": "phone",
+          "rule": "Pick the most frequent",
+          "precedence": 1
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
+    },
+    "c8d6ba885b24": {
+      "job_id": "c8d6ba885b24",
+      "match_columns": [
+        {
+          "name": "first_name",
+          "weight": 30.0
+        },
+        {
+          "name": "last_name",
+          "weight": 20.0
+        },
+        {
+          "name": "email",
+          "weight": 20.0
+        },
+        {
+          "name": "phone",
+          "weight": 30.0
+        }
+      ],
+      "survivorship_rules": [
+        {
+          "column": "phone",
+          "rule": "Pick the most frequent",
+          "precedence": 1
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
     }
   }
 }

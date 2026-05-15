@@ -100,9 +100,18 @@ class GCPClient:
             )
         return self._bq_client
 
-    def run_bigquery_sql(self, sql_layers: Dict[str, str]) -> Dict[str, Any]:
+    def run_bigquery_sql(
+        self, sql_layers: Dict[str, str], dataset_id: Optional[str] = None,
+        location: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Execute the 5-layer SQL pipeline against BigQuery."""
         client = self.bq()
+        ds = dataset_id or os.environ.get("BIGQUERY_DATASET", "searce_mdm")
+        loc = location or os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+        try:
+            self.ensure_dataset(ds, location=loc)
+        except Exception as e:
+            logger.warning("[bq] ensure_dataset failed: %s", e)
         results = {}
         for layer, sql in sql_layers.items():
             job = client.query(sql)
@@ -126,9 +135,32 @@ class GCPClient:
         self, bucket: str, blob_path: str, content: bytes, content_type: str = "text/csv"
     ) -> str:
         client = self.gcs()
-        b = client.bucket(bucket).blob(blob_path)
-        b.upload_from_string(content, content_type=content_type)
+        b = client.bucket(bucket)
+        if not b.exists():
+            logger.info("[gcs] bucket %s does not exist — creating in %s", bucket,
+                        os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"))
+            try:
+                client.create_bucket(
+                    bucket, location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+                )
+            except Exception as e:
+                logger.warning("[gcs] create_bucket failed: %s", e)
+                raise
+        blob = b.blob(blob_path)
+        blob.upload_from_string(content, content_type=content_type)
         return f"gs://{bucket}/{blob_path}"
+
+    def ensure_dataset(self, dataset_id: str, location: str = "us-central1"):
+        from google.cloud import bigquery as bq
+        client = self.bq()
+        ref = bq.DatasetReference(self.project_id, dataset_id)
+        try:
+            client.get_dataset(ref)
+        except Exception:
+            ds = bq.Dataset(ref)
+            ds.location = location
+            client.create_dataset(ds, exists_ok=True)
+            logger.info("[bq] created dataset %s.%s", self.project_id, dataset_id)
 
     # ----- Vertex AI Gemini -----
     def gemini(self):

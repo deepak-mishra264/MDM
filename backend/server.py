@@ -182,6 +182,26 @@ async def load_demo():
     df = _read_dataframe(Path(saved))
     columns = [str(c) for c in df.columns]
     sample = df.head(5).fillna("").astype(str).to_dict("records")
+
+    # GCS upload if live
+    cfg = read_gcp_config()
+    bucket = cfg.get("gcs_bucket", "searce-mdm-landing")
+    gcs_uri = f"gs://{bucket}/landing/{job_id}/demo_customers.csv"
+    gcs_state = "stubbed_local"
+    gcp = get_gcp()
+    if gcp.is_live:
+        try:
+            gcs_uri = gcp.upload_to_gcs(
+                bucket=bucket,
+                blob_path=f"landing/{job_id}/demo_customers.csv",
+                content=content,
+                content_type="text/csv",
+            )
+            gcs_state = "uploaded_to_gcs"
+        except (GCPUnavailable, Exception) as e:
+            logger.warning("[demo/load] GCS upload failed: %s", e)
+            gcs_state = f"gcs_failed:{type(e).__name__}"
+
     await _record_job(
         job_id,
         {
@@ -193,12 +213,14 @@ async def load_demo():
             "sample": sample,
             "state": "gcs_landed",
             "is_demo": True,
+            "gcs_uri": gcs_uri,
+            "gcs_state": gcs_state,
             "created_at": datetime.now(timezone.utc).isoformat(),
         },
     )
     return {"job_id": job_id, "filename": "demo_customers.csv", "row_count": int(len(df)),
             "columns": columns, "sample": sample,
-            "gcs_uri": f"gs://searce-mdm-landing/landing/{job_id}/demo_customers.csv"}
+            "gcs_uri": gcs_uri, "gcs_state": gcs_state}
 
 
 @api_router.get("/jobs/{job_id}")
@@ -347,12 +369,16 @@ async def _run_pipeline_task(job_id: str):
         if gcp.is_live:
             _update_stage(job_id, "bigquery", "running")
             try:
-                bq_jobs = gcp.run_bigquery_sql(sql)
+                bq_jobs = gcp.run_bigquery_sql(
+                    sql,
+                    dataset_id=gcp_cfg.get("dataset_id", "searce_mdm"),
+                    location=gcp_cfg.get("region", "us-central1"),
+                )
                 bq_state = "executed_on_bigquery"
                 _update_stage(job_id, "bigquery", "done", {"jobs": list(bq_jobs.keys())})
             except (GCPUnavailable, Exception) as e:
                 bq_state = f"bq_failed:{type(e).__name__}"
-                _update_stage(job_id, "bigquery", "failed", {"error": str(e)})
+                _update_stage(job_id, "bigquery", "failed", {"error": str(e)[:240]})
         else:
             _update_stage(
                 job_id, "bigquery", "skipped",

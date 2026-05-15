@@ -20,10 +20,23 @@ const NAV = [
 export default function Layout() {
   const { jobId } = useParams();
   const location = useLocation();
+  const [health, setHealth] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get("/health");
+        if (!cancelled) setHealth(data);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Try to grab a jobId out of the current path if not available via params
   const segs = location.pathname.split("/").filter(Boolean);
   const activeJob = jobId || (segs.length >= 2 ? segs[1] : "");
+  const isLive = health?.mode === "live";
 
   return (
     <div className="min-h-screen flex bg-[#F8F9FA] text-[#202124]" data-testid="app-layout">
@@ -33,7 +46,9 @@ export default function Layout() {
           <Logo className="h-7 w-7" />
           <div className="leading-tight">
             <div className="font-display text-[17px] font-bold tracking-tight">Searce MDM</div>
-            <div className="text-[11px] text-[#5F6368] uppercase tracking-widest">v4.0 · Preview</div>
+            <div className="text-[11px] text-[#5F6368] uppercase tracking-widest" data-testid="mode-tag">
+              v4.0 · {isLive ? "Live" : "Preview"}
+            </div>
           </div>
         </div>
         <nav className="flex-1 py-3 space-y-0.5" aria-label="Primary">
@@ -65,10 +80,16 @@ export default function Layout() {
         </nav>
         <div className="p-4 border-t border-[#DADCE0] text-[11px] text-[#5F6368]">
           <div className="flex items-center gap-2">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#188038]" />
-            <span>Preview mode · GCP stubbed</span>
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${isLive ? "bg-[#188038]" : "bg-[#F29900]"}`} />
+            <span data-testid="mode-banner">
+              {isLive ? "Live mode · GCP active" : "Preview mode · GCP stubbed"}
+            </span>
           </div>
-          <div className="mt-1 truncate">Vertex AI: add creds to go live</div>
+          <div className="mt-1 truncate">
+            {isLive
+              ? `Project · ${health?.gcp_project || "—"}`
+              : "Vertex AI: add creds to go live"}
+          </div>
         </div>
       </aside>
 

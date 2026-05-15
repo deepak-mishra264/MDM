@@ -1,16 +1,21 @@
-project_id: searce-mdm-demo
-region: us-central1
-dataset_id: searce_mdm
-gcs_bucket: searce-mdm-landing
+# gcp_config.yaml - Static infrastructure parameters for Searce MDM
+project_id: "searce-practice-data-analytics"
+region: "us-central1"
+dataset_id: "searce_mdm"
+gcs_bucket: "searce-mdm-landing"
+
 layers:
-  raw: raw_layer
-  staging: staging_layer
-  curated_master: curated_master
-  curated_suspect: curated_suspect
+  raw: "raw_layer"
+  staging: "staging_layer"
+  curated_master: "curated_master"
+  curated_suspect: "curated_suspect"
+
 vertex_ai:
-  model: gemini-2.5-pro
-  embedding_model: text-embedding-004
+  model: "gemini-2.5-pro"
+  embedding_model: "text-embedding-004"
+
 matching:
   threshold: 0.75
   enable_search_index: true
-mode: preview
+
+mode: "live"
