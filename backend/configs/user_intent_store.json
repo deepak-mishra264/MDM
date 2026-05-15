@@ -379,6 +379,36 @@
       ],
       "threshold": 0.75,
       "source_file": "demo_customers.csv"
+    },
+    "037b79cc136f": {
+      "job_id": "037b79cc136f",
+      "match_columns": [
+        {
+          "name": "FirstName",
+          "weight": 25.0
+        },
+        {
+          "name": "LastName",
+          "weight": 25.0
+        },
+        {
+          "name": "Email",
+          "weight": 25.0
+        },
+        {
+          "name": "Phone",
+          "weight": 25.0
+        }
+      ],
+      "survivorship_rules": [
+        {
+          "column": "Updated_TS",
+          "rule": "Most recent Value",
+          "precedence": 2
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "mdm_test_200.csv"
     }
   }
 }
