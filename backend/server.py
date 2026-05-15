@@ -1,4 +1,5 @@
 """Searce MDM Backend — AI-MDM Intelligence & Identity Portal."""
+import asyncio
 import io
 import json
 import logging
@@ -10,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
@@ -18,7 +19,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from mdm.agent import generate_strategy_summary
 from mdm.gcp_client import GCPUnavailable, get_gcp
-from mdm.matching_engine import run_pipeline
+from mdm.matching_engine import run_pipeline_async
 from mdm.sql_generator import generate_pipeline_sql
 from mdm.storage import (
     get_job_file,
@@ -46,16 +47,21 @@ logger = logging.getLogger("searce-mdm")
 
 
 # ---------------- Models ----------------
-class AttributeConfig(BaseModel):
+class MatchColumn(BaseModel):
     name: str
-    match_type: str = "probabilistic"  # deterministic | probabilistic | none
     weight: float = 0.0
-    survivorship_intent: str = ""
+
+
+class SurvivorshipRule(BaseModel):
+    column: str
+    rule: str = ""
+    precedence: int = 1
 
 
 class IntentPayload(BaseModel):
     job_id: str
-    attributes: List[AttributeConfig]
+    match_columns: List[MatchColumn] = []
+    survivorship_rules: List[SurvivorshipRule] = []
     threshold: float = 0.75
 
 
@@ -206,18 +212,23 @@ async def get_job(job_id: str):
 @api_router.post("/intent/save")
 async def save_intent(payload: IntentPayload):
     intent = payload.model_dump()
-    # Enforce probabilistic weights sum == 100 (allow tolerance for floats)
-    prob = [a for a in intent["attributes"] if a["match_type"] == "probabilistic"]
-    total = sum(a["weight"] for a in prob)
-    if prob and abs(total - 100.0) > 0.01:
+    if not intent["match_columns"]:
+        raise HTTPException(status_code=400, detail="Select at least one column for matching.")
+    total = sum(c["weight"] for c in intent["match_columns"])
+    if abs(total - 100.0) > 0.01:
         raise HTTPException(
             status_code=400,
-            detail=f"Probabilistic weights must sum to exactly 100 (got {total:.2f}).",
+            detail=f"Column weights must sum to exactly 100 (got {total:.2f}).",
         )
+    # Survivorship rules optional; validate columns belong to matchable set or original columns
     job = await _get_job(intent["job_id"])
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     intent["source_file"] = job.get("filename")
+    # Sort rules by precedence ascending (1 = highest priority)
+    intent["survivorship_rules"] = sorted(
+        intent.get("survivorship_rules", []), key=lambda r: r.get("precedence", 999)
+    )
     upsert_job_intent(intent["job_id"], intent)
     await _record_job(intent["job_id"], {"intent": intent, "state": "intent_saved"})
     return {"saved": True, "intent": intent}
@@ -241,42 +252,117 @@ async def agent_strategy(job_id: str):
     return summary
 
 
-@api_router.post("/pipeline/execute/{job_id}")
-async def execute_pipeline(job_id: str):
-    intent = get_job_intent(job_id)
-    if not intent:
-        raise HTTPException(status_code=404, detail="Save intent first")
-    job = await _get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    saved = job.get("saved_path") or (
-        str(get_job_file(job_id)) if get_job_file(job_id) else None
-    )
-    if not saved:
-        raise HTTPException(status_code=404, detail="Uploaded file missing")
+STAGE_LABELS = [
+    ("validating", "Validating intent & schema"),
+    ("standardizing", "Standardizing & normalizing records"),
+    ("deterministic", "Running deterministic exact-match algorithm"),
+    ("probabilistic", "Running probabilistic weighted fuzzy match"),
+    ("embedding", "Generating vector embeddings (ML.GENERATE_EMBEDDING)"),
+    ("clustering", "Clustering matches into enterprise_ids"),
+    ("survivorship", "Applying survivorship rules to build golden records"),
+    ("sql", "Generating BigQuery SQL for all 5 layers"),
+    ("bigquery", "Executing pipeline on BigQuery"),
+    ("complete", "Pipeline complete"),
+]
 
-    df = _read_dataframe(Path(saved))
-    result = run_pipeline(df, intent, threshold=float(intent.get("threshold", 0.75)))
-    gcp_cfg = read_gcp_config()
-    sql = generate_pipeline_sql(intent, gcp_cfg)
 
-    # Attempt live BigQuery execution if creds are real
-    bq_state = "stubbed_local"
-    bq_jobs: Dict[str, Any] = {}
-    gcp = get_gcp()
-    if gcp.is_live:
-        try:
-            bq_jobs = gcp.run_bigquery_sql(sql)
-            bq_state = "executed_on_bigquery"
-        except (GCPUnavailable, Exception) as e:
-            logger.warning("[pipeline] BigQuery execution failed: %s — using local results", e)
-            bq_state = f"bq_failed:{type(e).__name__}"
+def _init_stages() -> List[Dict[str, Any]]:
+    return [
+        {"key": k, "label": label, "state": "pending", "detail": {},
+         "started_at": None, "finished_at": None}
+        for k, label in STAGE_LABELS
+    ]
 
-    # Persist results into MongoDB (drop _id)
-    await db.results.update_one(
-        {"job_id": job_id},
-        {
-            "$set": {
+
+# In-memory progress tracker (process-local; OK for single-pod preview deployment)
+_progress_store: Dict[str, Dict[str, Any]] = {}
+
+
+def _set_progress(job_id: str, stages: List[Dict[str, Any]], extras: Dict[str, Any] = None):
+    _progress_store[job_id] = {
+        "job_id": job_id,
+        "stages": stages,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        **(extras or {}),
+    }
+
+
+def _update_stage(job_id: str, key: str, state: str, detail: Dict[str, Any] = None):
+    snap = _progress_store.get(job_id)
+    if not snap:
+        return
+    for s in snap["stages"]:
+        if s["key"] == key:
+            now = datetime.now(timezone.utc).isoformat()
+            s["state"] = state
+            if state == "running" and not s["started_at"]:
+                s["started_at"] = now
+            if state in ("done", "failed", "skipped"):
+                s["finished_at"] = now
+            if detail:
+                s["detail"].update(detail)
+            break
+    snap["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+
+async def _run_pipeline_task(job_id: str):
+    """Background task that walks the pipeline emitting progress."""
+    try:
+        intent = get_job_intent(job_id)
+        if not intent:
+            _update_stage(job_id, "validating", "failed", {"error": "No intent saved"})
+            return
+        job = await _get_job(job_id)
+        if not job:
+            _update_stage(job_id, "validating", "failed", {"error": "Job not found"})
+            return
+        saved = job.get("saved_path") or (
+            str(get_job_file(job_id)) if get_job_file(job_id) else None
+        )
+        if not saved:
+            _update_stage(job_id, "validating", "failed", {"error": "File missing"})
+            return
+
+        df = _read_dataframe(Path(saved))
+        # Pass full column list to SQL generator
+        intent = {**intent, "all_columns": [str(c) for c in df.columns]}
+
+        async def progress(key: str, state: str, detail: Dict[str, Any]):
+            _update_stage(job_id, key, state, detail)
+
+        result = await run_pipeline_async(
+            df, intent, threshold=float(intent.get("threshold", 0.75)), progress=progress
+        )
+
+        # SQL generation
+        _update_stage(job_id, "sql", "running")
+        gcp_cfg = read_gcp_config()
+        sql = generate_pipeline_sql(intent, gcp_cfg)
+        _update_stage(job_id, "sql", "done", {"layers": list(sql.keys())})
+
+        # BigQuery execute (live only)
+        gcp = get_gcp()
+        bq_state = "stubbed_local"
+        bq_jobs: Dict[str, Any] = {}
+        if gcp.is_live:
+            _update_stage(job_id, "bigquery", "running")
+            try:
+                bq_jobs = gcp.run_bigquery_sql(sql)
+                bq_state = "executed_on_bigquery"
+                _update_stage(job_id, "bigquery", "done", {"jobs": list(bq_jobs.keys())})
+            except (GCPUnavailable, Exception) as e:
+                bq_state = f"bq_failed:{type(e).__name__}"
+                _update_stage(job_id, "bigquery", "failed", {"error": str(e)})
+        else:
+            _update_stage(
+                job_id, "bigquery", "skipped",
+                {"note": "Preview mode — replace gcp_service_account.json to enable"},
+            )
+
+        # Persist results
+        await db.results.update_one(
+            {"job_id": job_id},
+            {"$set": {
                 "job_id": job_id,
                 "master": result["master"],
                 "suspect": result["suspect"],
@@ -285,31 +371,65 @@ async def execute_pipeline(job_id: str):
                 "bq_state": bq_state,
                 "bq_jobs": bq_jobs,
                 "computed_at": datetime.now(timezone.utc).isoformat(),
-            }
-        },
-        upsert=True,
-    )
-    await _record_job(
-        job_id,
-        {
-            "state": "curated",
-            "stats": result["stats"],
-            "bq_state": bq_state,
-            "lifecycle": {
-                "gcs_landed": True,
-                "raw": True,
-                "staging": True,
-                "curated": True,
+            }},
+            upsert=True,
+        )
+        await _record_job(
+            job_id,
+            {
+                "state": "curated",
+                "stats": result["stats"],
+                "bq_state": bq_state,
+                "lifecycle": {
+                    "gcs_landed": True, "raw": True, "staging": True, "curated": True,
+                },
             },
-        },
-    )
-    return {
-        "job_id": job_id,
-        "stats": result["stats"],
-        "sql_layers": list(sql.keys()),
-        "bq_state": bq_state,
-        "bq_jobs": bq_jobs,
-    }
+        )
+        _update_stage(job_id, "complete", "done", {**result["stats"], "bq_state": bq_state})
+    except Exception as e:
+        logger.exception("[pipeline] task crashed")
+        _update_stage(job_id, "complete", "failed", {"error": str(e)})
+
+
+@api_router.post("/pipeline/execute/{job_id}")
+async def execute_pipeline(job_id: str, background_tasks: BackgroundTasks):
+    intent = get_job_intent(job_id)
+    if not intent:
+        raise HTTPException(status_code=404, detail="Save intent first")
+    job = await _get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    stages = _init_stages()
+    _set_progress(job_id, stages, {"state": "running"})
+    background_tasks.add_task(_run_pipeline_task, job_id)
+    return {"job_id": job_id, "state": "running", "stages": stages}
+
+
+@api_router.get("/pipeline/progress/{job_id}")
+async def pipeline_progress(job_id: str):
+    snap = _progress_store.get(job_id)
+    if not snap:
+        # No active run — fall back to last-known lifecycle state from MongoDB
+        job = await _get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job.get("state") == "curated":
+            stages = _init_stages()
+            for s in stages:
+                s["state"] = "done"
+                s["finished_at"] = job.get("updated_at")
+            return {
+                "job_id": job_id, "stages": stages, "state": "complete",
+                "stats": job.get("stats", {}),
+                "bq_state": job.get("bq_state", "stubbed_local"),
+            }
+        return {"job_id": job_id, "stages": _init_stages(), "state": "idle"}
+    # Determine top-level state
+    all_done = all(s["state"] in ("done", "skipped") for s in snap["stages"])
+    any_failed = any(s["state"] == "failed" for s in snap["stages"])
+    top_state = "failed" if any_failed else "complete" if all_done else "running"
+    return {**snap, "state": top_state}
 
 
 @api_router.get("/pipeline/status/{job_id}")

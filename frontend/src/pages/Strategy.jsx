@@ -35,11 +35,11 @@ export default function Strategy() {
   const execute = async () => {
     setExecuting(true);
     try {
-      const { data } = await api.post(`/pipeline/execute/${jobId}`);
-      toast.success(`Pipeline complete · ${data.stats.unique_masters} masters · ${data.stats.duplicate_suspects} suspects`);
+      await api.post(`/pipeline/execute/${jobId}`);
+      toast.success("Pipeline started · watch the live progress");
       navigate(`/pipeline/${jobId}`);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Pipeline failed");
+      toast.error(e?.response?.data?.detail || "Pipeline failed to start");
     } finally {
       setExecuting(false);
     }
@@ -88,25 +88,22 @@ export default function Strategy() {
           {/* Configuration snapshot */}
           <div className="grid md:grid-cols-2 gap-4">
             <div className="bg-white border border-[#DADCE0] rounded-md p-5" data-testid="match-config-card">
-              <div className="text-[11px] uppercase tracking-[0.12em] text-[#5F6368] mb-2">Match Configuration</div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[#5F6368] mb-2">Match Columns (used by both engines)</div>
               <ul className="space-y-2 text-sm">
-                {intent?.attributes?.filter((a) => a.match_type !== "none").map((a) => (
-                  <li key={a.name} className="flex items-center justify-between gap-4">
-                    <span className="text-[#202124]">{a.name}</span>
-                    <span className="text-xs">
-                      {a.match_type === "deterministic" ? (
-                        <Badge className="bg-[#E6F4EA] text-[#188038] hover:bg-[#E6F4EA]">Exact</Badge>
-                      ) : (
-                        <Badge className="bg-[#E8F0FE] text-[#1A73E8] hover:bg-[#E8F0FE]">Fuzzy · {a.weight}%</Badge>
-                      )}
-                    </span>
+                {(intent?.match_columns || []).map((c) => (
+                  <li key={c.name} className="flex items-center justify-between gap-4">
+                    <span className="text-[#202124]">{c.name}</span>
+                    <Badge className="bg-[#E8F0FE] text-[#1A73E8] hover:bg-[#E8F0FE]">Weight · {c.weight}%</Badge>
                   </li>
                 ))}
+                {(intent?.match_columns || []).length === 0 && (
+                  <li className="text-xs text-[#5F6368]">No columns selected.</li>
+                )}
               </ul>
             </div>
 
             <div className="bg-white border border-[#DADCE0] rounded-md p-5" data-testid="survivorship-breakdown-card">
-              <div className="text-[11px] uppercase tracking-[0.12em] text-[#5F6368] mb-2">Survivorship Breakdown (Agent-Interpreted)</div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[#5F6368] mb-2">Survivorship Rules (Agent-Interpreted)</div>
               <ul className="space-y-2.5 text-sm">
                 {(strategy.survivorship_breakdown || []).map((s, idx) => (
                   <li key={idx} className="flex items-start gap-2">
@@ -117,6 +114,9 @@ export default function Strategy() {
                     </div>
                   </li>
                 ))}
+                {(strategy.survivorship_breakdown || []).length === 0 && (
+                  <li className="text-xs text-[#5F6368]">No explicit rules — default is most-recent non-null per column.</li>
+                )}
               </ul>
             </div>
           </div>
