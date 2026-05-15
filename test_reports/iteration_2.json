@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 2 testing for the new match_columns + survivorship_rules schema and the staged async pipeline. Replaced /app/backend/tests/test_mdm_api.py with 12 new pytest tests against the public REACT_APP_BACKEND_URL — 12/12 pass. Backend correctly validates weight sum (rejects 99/101, accepts 100 with 0.01 tolerance), rejects empty match_columns, sorts survivorship_rules by precedence ascending, and persists intent. Agent strategy endpoint returns summary on the new schema. /api/pipeline/execute returns immediately with state=running and the 10-stage list; /api/pipeline/progress polls through validating → standardizing → deterministic → probabilistic → embedding → clustering → survivorship → sql → bigquery(skipped) → complete and reaches state=complete in ~2-3 seconds on the 20-row demo. Master + suspect pagination work. Frontend e2e: Home → Try-the-demo → Configure (column picker Popover+Command works, multi-select stays open between toggles, normalize button → total=100%, Add Rule + precedence + text edits work) → Save & Continue navigates to /strategy → Confirm & Execute navigates immediately to /pipeline → live-polling timeline renders all 10 stages with state colors, ms durations and detail text (e.g. '20 rows normalized', '190 fuzzy pair(s) ≥ threshold', '1 enterprise_id cluster(s) formed') → banner switches from 'Pipeline running…' to 'Pipeline complete · N masters · N suspects · BigQuery: stubbed_local' → View Generated SQL and View Curated Results buttons enable when complete.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Pipeline page", "issues": ["Banner stats display 'N masters · N suspects' but 1 + 20 = 21 from a 20-row input is misleading — every input record ends up in suspect because it was duplicated against the single master. Cosmetic note only; matches engine behavior is correct given the chosen match column."]},
+      {"screen": "Configure page", "issues": ["Default pre-selection logic uses regex /name|email|phone|mobile|id$/i so even single-column IDs like 'customer_id' get auto-picked. If user then clicks the picker for one of those names intending to ADD it, it actually toggles it OFF. Suggest distinguishing visual state ('already added' indicator) or making the picker an 'add only' UX for non-selected columns. Not blocking."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_mdm_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:218 — weight-sum validation uses tolerance 0.01 as specified by PRD. ✓",
+    "server.py:229 — survivorship_rules are sorted by precedence ascending before persist; rule with no precedence falls back to 999. Confirmed via test_intent_accept_sum_100_and_sorts_rules.",
+    "server.py:278 — _progress_store is a process-local dict; correct for single-pod preview deployments. If/when scaled horizontally, move to Redis/Mongo. Documented for future.",
+    "server.py:330–334 — run_pipeline_async receives ProgressFn and propagates stage updates; bigquery stage correctly emits 'skipped' (not 'done') in preview mode. ✓",
+    "server.py:419–427 — /pipeline/progress falls back to last-known lifecycle from Mongo when no in-memory snapshot exists; nice resilience after pod restart.",
+    "Pipeline.jsx:47 — polls every 800ms and stops polling on terminal state via clearInterval. ✓",
+    "Configure.jsx:39 — default column auto-picker regex /name|email|phone|mobile|id$/i is aggressive: it pre-selects 'customer_id' which is a poor probabilistic match column. Consider excluding columns ending in _id when they look like primary keys, or making auto-pick opt-in.",
+    "Configure.jsx — column picker Popover stays open between toggle clicks (verified). Multi-select works correctly. ✓",
+    "Configure.jsx:113 — sortedRules uses findIndex(x => x === r) which depends on object identity — fragile if React reuses references; consider using a stable id. Not currently failing.",
+    "Pipeline UI banner: stats rendered live from stage detail JSON; data-testid coverage is excellent on the new pages (pipeline-status-banner, pipeline-timeline, stage-{key}, view-sql-btn, view-results-btn)."
+  ],
+  "updated_files": ["/app/backend/tests/test_mdm_api.py"],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% (all critical UI flows verified)"},
+  "test_credentials": "None required — no auth on this app",
+  "seed_data_creation": "Used POST /api/demo/load which generates a fresh 20-row demo job from /app/backend/configs/demo_customers.csv each call.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite at /app/backend/tests/test_mdm_api.py (uses new schema match_columns + survivorship_rules, validates 10-stage async pipeline). Run with: cd /app/backend && pytest tests/test_mdm_api.py -v --junitxml=/app/test_reports/pytest/pytest_results.xml. BASE_URL auto-resolves from REACT_APP_BACKEND_URL env or /app/frontend/.env. Frontend testids per request match (open-column-picker, picker-item-{col}, match-row-{col}, weight-slider-{col}, weight-input-{col}, remove-column-{col}, weight-total-badge, normalize-btn, add-rule-btn, rule-precedence-{idx}, rule-column-{idx}, rule-text-{idx}, remove-rule-{idx}, save-and-continue-btn, confirm-execute-btn on Strategy, pipeline-status-banner, pipeline-timeline, stage-{validating|standardizing|deterministic|probabilistic|embedding|clustering|survivorship|sql|bigquery|complete}, view-sql-btn, view-results-btn). In preview mode bigquery stage emits 'skipped' (correct). Pipeline completes on demo data in ~2-3s.",
+  "rca of the issue": "No bugs found in this iteration."
+}
