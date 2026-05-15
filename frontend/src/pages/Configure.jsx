@@ -34,9 +34,12 @@ export default function Configure() {
           setMatchCols(intent.match_columns || []);
           setRules(intent.survivorship_rules || []);
         } catch {
-          // first-time defaults: pre-pick obvious ID-like columns
+          // first-time defaults: auto-pick obvious match candidates,
+          // skipping primary-key-like columns (foo_id, id)
           const cols = data.columns || [];
-          const preferred = cols.filter((c) => /name|email|phone|mobile|id$/i.test(c)).slice(0, 4);
+          const preferred = cols.filter(
+            (c) => /name|email|phone|mobile/i.test(c) && !/^id$|_id$/i.test(c)
+          ).slice(0, 4);
           if (preferred.length > 0) {
             const base = Math.floor(100 / preferred.length);
             let rem = 100 - base * preferred.length;

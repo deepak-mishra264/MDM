@@ -37,16 +37,17 @@ SQL. Manage a 3-tier data lifecycle (Raw → Staging → Curated) entirely withi
 - BigQuery SQL is auditable and downloadable.
 - `user_intent_store.json` updated before pipeline → reproducible re-runs.
 
-## What's Implemented (updated 2026-02-14)
-- All v4.0 MVP features (hero upload, configure, agent strategy, pipeline, results, search, SQL viewer, audit, settings).
-- **Pagination** on Master/Suspect endpoints + Results table footer (default page = 50, prev/next buttons, `has_more` flag).
-- **Live-mode plumbing** for Vertex AI Gemini 2.5 Pro, BigQuery, and GCS via `mdm/gcp_client.py`:
-  - Detects placeholder service-account JSON and falls back to preview mode without crashing.
-  - On real credentials, upload → GCS, pipeline execute → BigQuery, agent → Vertex AI Gemini 2.5 Pro.
-  - Emergent Gemini 3 Flash is the LLM in preview mode; deterministic rule-based summary as final fallback.
-- `/api/health` reports `mode`, `vertex_ready`, `gcp_project`.
-- Pipeline execution response now includes `bq_state` (`stubbed_local`, `executed_on_bigquery`, or `bq_failed:<error>`).
-- Placeholder service-account JSON at `/app/backend/configs/gcp_service_account.json` — replace this single file with a real key to flip the app to live mode.
+## What's Implemented (updated 2026-02-15)
+- **Configure step redesigned**: column multi-select dropdown (shadcn Popover + Command), per-column weight (slider + numeric input), separate Survivorship Rules section with column dropdown + precedence number + plain-English textarea. Lower precedence wins when multiple rules target the same column.
+- **Unified matching**: selected columns now drive BOTH the deterministic (all-equal) and probabilistic (weighted fuzzy) engines.
+- **Staged async pipeline execution** with live progress:
+  - `POST /pipeline/execute/{job_id}` returns immediately with `state=running`.
+  - `GET /pipeline/progress/{job_id}` returns 10 staged steps: validating → standardizing → deterministic → probabilistic → embedding → clustering → survivorship → sql → bigquery → complete.
+  - Each stage emits `state` (pending/running/done/failed/skipped), `detail` (counts/notes), `started_at`, `finished_at`.
+  - Frontend `Pipeline.jsx` polls every 800ms and renders a vertical timeline with spinner / done / skipped indicators + ms durations.
+- **Pagination** on Master/Suspect (50/page, prev/next).
+- **Live-mode plumbing** for Vertex AI Gemini 2.5 Pro + BigQuery + GCS via `mdm/gcp_client.py`. Placeholder service-account at `/app/backend/configs/gcp_service_account.json` — replace to enable live mode.
+- Backend pipeline persists golden records with numpy-safe `_to_python` coercion (no Mongo encoding errors).
 
 ## API Endpoints (all `/api` prefixed)
 | Method | Path | Purpose |
