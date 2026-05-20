@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 3 — verified the new TWO-section schema split (deterministic_columns + probabilistic_columns) end-to-end. Replaced /app/backend/tests/test_mdm_api.py with 14 pytest tests against REACT_APP_BACKEND_URL — 14/14 pass. Validations confirmed: empty det+prob → 400 'Select at least one column'; prob weights 99 or 101 → 400 'must sum to 100'; weights summing to 100 → 200; deterministic-only (no prob) → 200 with no weight check. /api/agent/strategy/{job_id} returns summary referencing both schemas. /api/pipeline/execute → /pipeline/progress walks 10 stages; validating stage detail includes 'deterministic' + 'probabilistic' column lists; deterministic stage includes 'keys'; probabilistic stage includes 'attrs' with weight % strings. GET /api/intent/{job_id} returns new schema fields. Frontend e2e: Home → Try the demo → Configure shows three sections (det-section green chips-only, prob-section blue weighted rows with sliders + weight inputs + total badge + normalize, survivorship-section with precedence/column/textarea). Add/Remove via det-picker and prob-picker popovers works; det-chip-{col} / det-remove-{col} render correctly; weight-total-badge updates on normalize. Save & Continue navigates to /strategy where Match Configuration card correctly shows 'Key Attributes (Deterministic)' green chips and 'Suspect-Score Attributes (Probabilistic)' rows with weights, plus survivorship breakdown. Confirm & Execute navigates to /pipeline which reaches state=complete and banner shows '15 masters · 9 suspects · 2 deterministic · 4 probabilistic · BigQuery: stubbed_local'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Pipeline timeline", "issues": ["Validating stage shows only '0 survivorship rule(s)' in detail row; the backend payload actually includes deterministic + probabilistic column lists (verified via /pipeline/progress JSON). Consider rendering those as chips on the validating row for parity with the Strategy page."]},
+      {"screen": "Validating stage timing", "issues": ["Stage shows '0 ms' duration — visually awkward. Consider rounding up to 1 ms or omitting timing when stage is instantaneous."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_mdm_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:61-66 — IntentPayload correctly splits deterministic_columns:[str] and probabilistic_columns:[MatchColumn]. ✓",
+    "server.py:236-262 — save_intent validates (a) at least one of det/prob present and (b) prob weights sum to exactly 100 (tolerance 0.01). Deterministic-only path correctly skips weight check. ✓",
+    "matching_engine.py:180-244 — run_pipeline_async iterates det_cols and prob_cols separately; deterministic edges short-circuit before probabilistic scoring; emit() payloads include keys=det_cols and attrs=[name(weight%)] strings per PRD. ✓",
+    "sql_generator.py:118-142 — det_join is AND-of-equality across all det_cols (with non-null guard); prob_score uses ONLY prob_cols weights — schema separation correct. ✓",
+    "agent.py:34-52 — _build_user_prompt now describes 'Deterministic key attributes (exact-match)' and 'Probabilistic suspect-score attributes with weights' separately. ✓",
+    "Configure.jsx:50-66 — Default auto-pick is now narrowed: det defaults to /^email$/i (single column), prob default excludes /^id$|_id$/i (good fix from iteration 2 feedback). ✓",
+    "Configure.jsx:128-134 — sortedRules still uses originalIdx via map index; key is composite (originalIdx + column); acceptable but could use uuid for robustness.",
+    "Strategy.jsx renders green chips for det and blue weighted rows for prob in the Match Configuration card (verified visually). ✓"
+  ],
+  "updated_files": ["/app/backend/tests/test_mdm_api.py"],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "100% (all required flows verified)"},
+  "test_credentials": "None required",
+  "seed_data_creation": "POST /api/demo/load (20-row demo_customers.csv) per test session.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression at /app/backend/tests/test_mdm_api.py covers the NEW iter-3 schema: deterministic_columns (List[str]) + probabilistic_columns (List[{name,weight}]) + survivorship_rules. Run: cd /app/backend && pytest tests/test_mdm_api.py -v --junitxml=/app/test_reports/pytest/pytest_results.xml. BASE_URL auto-resolves from REACT_APP_BACKEND_URL or /app/frontend/.env. Key frontend testids: det-section, prob-section, survivorship-section, open-det-picker, open-prob-picker, det-picker-item-{col}, prob-picker-item-{col}, det-chip-{col}, det-remove-{col}, prob-row-{col}, weight-slider-{col}, weight-input-{col}, remove-prob-{col}, weight-total-badge, normalize-btn, add-rule-btn, rule-precedence-{idx}, rule-column-{idx}, rule-text-{idx}, remove-rule-{idx}, save-and-continue-btn. In preview mode bigquery stage emits 'skipped'; pipeline reaches state=complete in ~2-3s on the 20-row demo.",
+  "rca of the issue": "No bugs — all required features verified working."
+}

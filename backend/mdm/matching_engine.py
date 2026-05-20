@@ -177,21 +177,27 @@ async def run_pipeline_async(
         if progress:
             await progress(key, state, detail)
 
-    match_cols: List[Dict[str, Any]] = intent.get("match_columns", [])
+    det_cols: List[str] = list(intent.get("deterministic_columns", []))
+    prob_cols: List[Dict[str, Any]] = list(intent.get("probabilistic_columns", []))
     survivorship_rules: List[Dict[str, Any]] = intent.get("survivorship_rules", [])
-    col_names = [c["name"] for c in match_cols]
+    standardize_cols = list({*det_cols, *(c["name"] for c in prob_cols)})
 
     # Stage 1 — validating
     await emit("validating", "running")
-    if not match_cols:
+    if not det_cols and not prob_cols:
         await emit("validating", "failed", error="No match columns selected")
         raise ValueError("No match columns selected")
-    await emit("validating", "done", columns=col_names, rules=len(survivorship_rules))
+    await emit(
+        "validating", "done",
+        deterministic=det_cols,
+        probabilistic=[c["name"] for c in prob_cols],
+        rules=len(survivorship_rules),
+    )
 
     # Stage 2 — standardizing
     await emit("standardizing", "running")
     await asyncio.sleep(0.3)
-    staged = standardize(df, col_names)
+    staged = standardize(df, standardize_cols)
     rows = staged.to_dict("records")
     n = len(rows)
     await emit("standardizing", "done", rows=n)
@@ -202,36 +208,40 @@ async def run_pipeline_async(
     edges: List[Tuple[int, int]] = []
     pair_meta: Dict[Tuple[int, int], Dict[str, Any]] = {}
     det_hits = 0
-    for i in range(n):
-        for j in range(i + 1, n):
-            if _deterministic_match(rows[i], rows[j], col_names):
-                edges.append((i, j))
-                pair_meta[(i, j)] = {
-                    "score": 100.0,
-                    "method": "deterministic",
-                    "explanation": f"Exact match on {', '.join(col_names)}",
-                }
-                det_hits += 1
-    await emit("deterministic", "done", matches=det_hits)
+    if det_cols:
+        for i in range(n):
+            for j in range(i + 1, n):
+                if _deterministic_match(rows[i], rows[j], det_cols):
+                    edges.append((i, j))
+                    pair_meta[(i, j)] = {
+                        "score": 100.0,
+                        "method": "deterministic",
+                        "explanation": f"Exact match on {', '.join(det_cols)}",
+                    }
+                    det_hits += 1
+    await emit("deterministic", "done", matches=det_hits,
+               keys=det_cols or ["(none)"])
 
     # Stage 4 — probabilistic pass
     await emit("probabilistic", "running")
     await asyncio.sleep(0.3)
     prob_hits = 0
-    for i in range(n):
-        for j in range(i + 1, n):
-            if (i, j) in pair_meta:
-                continue
-            score, explanation = _probabilistic_score(rows[i], rows[j], match_cols)
-            if score >= threshold:
-                edges.append((i, j))
-                pair_meta[(i, j)] = {
-                    "score": round(score * 100, 2),
-                    "method": "probabilistic",
-                    "explanation": explanation,
-                }
-                prob_hits += 1
-    await emit("probabilistic", "done", matches=prob_hits)
+    if prob_cols:
+        for i in range(n):
+            for j in range(i + 1, n):
+                if (i, j) in pair_meta:
+                    continue
+                score, explanation = _probabilistic_score(rows[i], rows[j], prob_cols)
+                if score >= threshold:
+                    edges.append((i, j))
+                    pair_meta[(i, j)] = {
+                        "score": round(score * 100, 2),
+                        "method": "probabilistic",
+                        "explanation": explanation,
+                    }
+                    prob_hits += 1
+    await emit("probabilistic", "done", matches=prob_hits,
+               attrs=[f"{c['name']}({c.get('weight',0)}%)" for c in prob_cols] or ["(none)"])
 
     # Stage 5 — embedding (simulated for preview; ML.GENERATE_EMBEDDING in live)
     await emit("embedding", "running")
@@ -264,14 +274,12 @@ async def run_pipeline_async(
         if len(group) == 1:
             record["match_method"] = "unique"
         else:
-            # Detect if all selected cols match exactly in this cluster
-            det = all(
+            det_ok = bool(det_cols) and all(
                 group[c].nunique(dropna=True) <= 1 and (group[c].iloc[0] or "") != ""
-                for c in col_names
+                for c in det_cols if c in group.columns
             )
-            record["match_method"] = "deterministic" if det else "probabilistic"
+            record["match_method"] = "deterministic" if det_ok else "probabilistic"
         record["source_record_count"] = int(len(group))
-        # Apply survivorship per column (use original df columns, not just match cols)
         for col in df.columns:
             if col in ("record_uid", "ingested_at", "enterprise_id"):
                 continue

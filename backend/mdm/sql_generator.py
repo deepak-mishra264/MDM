@@ -59,14 +59,17 @@ def generate_pipeline_sql(intent: Dict[str, Any], gcp_config: Dict[str, Any]) ->
     threshold = gcp_config.get("matching", {}).get("threshold", 0.75)
 
     job_id = intent.get("job_id", "job")
-    match_cols: List[Dict[str, Any]] = intent.get("match_columns", [])
+    det_cols: List[str] = intent.get("deterministic_columns", [])
+    prob_cols: List[Dict[str, Any]] = intent.get("probabilistic_columns", [])
     survivorship_rules: List[Dict[str, Any]] = sorted(
         intent.get("survivorship_rules", []), key=lambda r: r.get("precedence", 999)
     )
     source_file = intent.get("source_file", "uploaded_file.csv")
-    all_input_cols: List[str] = intent.get("all_columns", [c["name"] for c in match_cols])
+    all_input_cols: List[str] = intent.get(
+        "all_columns",
+        list({*det_cols, *(c["name"] for c in prob_cols)}),
+    )
 
-    sel_names = [c["name"] for c in match_cols]
     fq = f"`{project}.{dataset}"
 
     # ---------- 1. GCS -> Raw ----------
@@ -112,21 +115,21 @@ FROM {fq}.{raw_t}_{job_id}`
 WHERE {' OR '.join([f"{_sanitize(c)} IS NOT NULL" for c in all_input_cols]) or 'TRUE'};"""
 
     # ---------- 3. Master ----------
-    # Deterministic join: ALL selected columns equal (and non-null)
-    if sel_names:
+    # Deterministic join: ALL deterministic columns equal (and non-null)
+    if det_cols:
         det_join = " AND ".join(
             [
                 f"a.{_sanitize(c)} = b.{_sanitize(c)} AND a.{_sanitize(c)} IS NOT NULL"
-                for c in sel_names
+                for c in det_cols
             ]
         )
     else:
         det_join = "FALSE"
 
-    # Probabilistic weighted score over the SAME selected columns
-    if match_cols:
+    # Probabilistic weighted score over the PROBABILISTIC columns only
+    if prob_cols:
         terms = []
-        for a in match_cols:
+        for a in prob_cols:
             sc = _sanitize(a["name"])
             w = float(a.get("weight", 0)) / 100.0
             terms.append(
@@ -209,7 +212,7 @@ GROUP BY j.enterprise_id, cm.source_count, cm.has_det;"""
 
     # ---------- 4. Suspect ----------
     explain_terms = []
-    for a in match_cols:
+    for a in prob_cols:
         sc = _sanitize(a["name"])
         explain_terms.append(
             f"IF(SOUNDEX(a.{sc}) = SOUNDEX(b.{sc}), '{a['name']} matches phonetically; ', '{a['name']} differs; ')"

@@ -534,6 +534,150 @@
       ],
       "threshold": 0.75,
       "source_file": "demo_customers.csv"
+    },
+    "a0aa09ad9db8": {
+      "job_id": "a0aa09ad9db8",
+      "deterministic_columns": [
+        "email"
+      ],
+      "probabilistic_columns": [
+        {
+          "name": "first_name",
+          "weight": 40.0
+        },
+        {
+          "name": "last_name",
+          "weight": 20.0
+        },
+        {
+          "name": "phone",
+          "weight": 40.0
+        }
+      ],
+      "survivorship_rules": [
+        {
+          "column": "phone",
+          "rule": "Pick the most frequent",
+          "precedence": 1
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
+    },
+    "997a4ded45b1": {
+      "job_id": "997a4ded45b1",
+      "deterministic_columns": [
+        "email"
+      ],
+      "probabilistic_columns": [
+        {
+          "name": "first_name",
+          "weight": 34.0
+        },
+        {
+          "name": "last_name",
+          "weight": 33.0
+        },
+        {
+          "name": "phone",
+          "weight": 33.0
+        }
+      ],
+      "survivorship_rules": [],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
+    },
+    "d2cf52ec4b06": {
+      "job_id": "d2cf52ec4b06",
+      "deterministic_columns": [
+        "email"
+      ],
+      "probabilistic_columns": [
+        {
+          "name": "first_name",
+          "weight": 40.0
+        },
+        {
+          "name": "last_name",
+          "weight": 30.0
+        },
+        {
+          "name": "phone",
+          "weight": 30.0
+        }
+      ],
+      "survivorship_rules": [
+        {
+          "column": "email",
+          "rule": "Most recent non-null",
+          "precedence": 1
+        },
+        {
+          "column": "first_name",
+          "rule": "Longest value",
+          "precedence": 2
+        },
+        {
+          "column": "last_name",
+          "rule": "Most frequent",
+          "precedence": 3
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
+    },
+    "1c3cd77e8bd0": {
+      "job_id": "1c3cd77e8bd0",
+      "deterministic_columns": [
+        "email",
+        "first_name"
+      ],
+      "probabilistic_columns": [
+        {
+          "name": "first_name",
+          "weight": 34.0
+        },
+        {
+          "name": "last_name",
+          "weight": 33.0
+        },
+        {
+          "name": "phone",
+          "weight": 33.0
+        }
+      ],
+      "survivorship_rules": [
+        {
+          "column": "customer_id",
+          "rule": "",
+          "precedence": 1
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
+    },
+    "da1c80b72955": {
+      "job_id": "da1c80b72955",
+      "deterministic_columns": [
+        "email"
+      ],
+      "probabilistic_columns": [
+        {
+          "name": "first_name",
+          "weight": 34.0
+        },
+        {
+          "name": "last_name",
+          "weight": 33.0
+        },
+        {
+          "name": "phone",
+          "weight": 33.0
+        }
+      ],
+      "survivorship_rules": [],
+      "threshold": 0.75,
+      "source_file": "demo_customers.csv"
     }
   }
 }

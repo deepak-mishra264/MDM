@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useParams } from "react-router-dom";
 import {
   Home, Sliders, Brain, GitBranch, Database,
   Search, Code2, ScrollText, Settings as SettingsIcon, Cloud
 } from "lucide-react";
+import { api } from "@/lib/api";
 import Logo from "@/components/Logo";
 
 const NAV = [

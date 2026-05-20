@@ -60,7 +60,8 @@ class SurvivorshipRule(BaseModel):
 
 class IntentPayload(BaseModel):
     job_id: str
-    match_columns: List[MatchColumn] = []
+    deterministic_columns: List[str] = []
+    probabilistic_columns: List[MatchColumn] = []
     survivorship_rules: List[SurvivorshipRule] = []
     threshold: float = 0.75
 
@@ -234,20 +235,25 @@ async def get_job(job_id: str):
 @api_router.post("/intent/save")
 async def save_intent(payload: IntentPayload):
     intent = payload.model_dump()
-    if not intent["match_columns"]:
-        raise HTTPException(status_code=400, detail="Select at least one column for matching.")
-    total = sum(c["weight"] for c in intent["match_columns"])
-    if abs(total - 100.0) > 0.01:
+    det = intent.get("deterministic_columns", [])
+    prob = intent.get("probabilistic_columns", [])
+    if not det and not prob:
         raise HTTPException(
             status_code=400,
-            detail=f"Column weights must sum to exactly 100 (got {total:.2f}).",
+            detail="Select at least one column (Key Attribute or Suspect-Score Attribute).",
         )
-    # Survivorship rules optional; validate columns belong to matchable set or original columns
+    if prob:
+        total = sum(c["weight"] for c in prob)
+        if abs(total - 100.0) > 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Probabilistic weights must sum to exactly 100 (got {total:.2f}).",
+            )
     job = await _get_job(intent["job_id"])
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     intent["source_file"] = job.get("filename")
-    # Sort rules by precedence ascending (1 = highest priority)
+    # Sort rules ascending by precedence (1 = highest)
     intent["survivorship_rules"] = sorted(
         intent.get("survivorship_rules", []), key=lambda r: r.get("precedence", 999)
     )

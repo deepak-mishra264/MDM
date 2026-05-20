@@ -88,17 +88,35 @@ export default function Strategy() {
           {/* Configuration snapshot */}
           <div className="grid md:grid-cols-2 gap-4">
             <div className="bg-white border border-[#DADCE0] rounded-md p-5" data-testid="match-config-card">
-              <div className="text-[11px] uppercase tracking-[0.12em] text-[#5F6368] mb-2">Match Columns (used by both engines)</div>
-              <ul className="space-y-2 text-sm">
-                {(intent?.match_columns || []).map((c) => (
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[#5F6368] mb-3">Match Configuration</div>
+
+              <div className="text-[11px] uppercase tracking-[0.06em] text-[#188038] mb-1.5 flex items-center gap-1.5">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#188038]" />
+                Key Attributes (Deterministic)
+              </div>
+              <div className="flex flex-wrap gap-1.5 mb-4">
+                {(intent?.deterministic_columns || []).length === 0 && (
+                  <span className="text-xs text-[#5F6368]">None — clusters rely on Suspect Score.</span>
+                )}
+                {(intent?.deterministic_columns || []).map((c) => (
+                  <Badge key={c} className="bg-[#E6F4EA] text-[#188038] hover:bg-[#E6F4EA]">{c}</Badge>
+                ))}
+              </div>
+
+              <div className="text-[11px] uppercase tracking-[0.06em] text-[#1A73E8] mb-1.5 flex items-center gap-1.5">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#1A73E8]" />
+                Suspect-Score Attributes (Probabilistic)
+              </div>
+              <ul className="space-y-1.5 text-sm">
+                {(intent?.probabilistic_columns || []).length === 0 && (
+                  <li className="text-xs text-[#5F6368]">None — clusters rely on Key Attributes.</li>
+                )}
+                {(intent?.probabilistic_columns || []).map((c) => (
                   <li key={c.name} className="flex items-center justify-between gap-4">
                     <span className="text-[#202124]">{c.name}</span>
                     <Badge className="bg-[#E8F0FE] text-[#1A73E8] hover:bg-[#E8F0FE]">Weight · {c.weight}%</Badge>
                   </li>
                 ))}
-                {(intent?.match_columns || []).length === 0 && (
-                  <li className="text-xs text-[#5F6368]">No columns selected.</li>
-                )}
               </ul>
             </div>
 
