@@ -57,15 +57,24 @@ def _deterministic_match(a: Dict[str, Any], b: Dict[str, Any], cols: List[str]) 
 def _probabilistic_score(
     a: Dict[str, Any], b: Dict[str, Any], cols: List[Dict[str, Any]]
 ) -> Tuple[float, str]:
-    score = 0.0
-    parts = []
+    """Weighted similarity score over the probabilistic columns.
+
+    Null/empty fields on either side are REMOVED from BOTH the numerator and
+    the denominator (i.e., weights re-normalised to the fields that are
+    actually present). This avoids penalising records that merely have a
+    missing value in one column while every other unique identifier matches.
+    """
+    raw_score = 0.0
+    present_weight = 0.0
+    parts: List[str] = []
     for attr in cols:
         col = attr["name"]
         w = float(attr.get("weight", 0)) / 100.0
         va, vb = str(a.get(col) or ""), str(b.get(col) or "")
         if not va or not vb:
-            parts.append(f"{col}: missing")
+            parts.append(f"{col}: missing on one side (excluded from score)")
             continue
+        present_weight += w
         soundex_match = jellyfish.soundex(va or " ") == jellyfish.soundex(vb or " ")
         metaphone_match = jellyfish.metaphone(va) == jellyfish.metaphone(vb)
         token_ratio = fuzz.token_sort_ratio(va, vb) / 100.0
@@ -74,13 +83,15 @@ def _probabilistic_score(
             + 0.20 * (1.0 if metaphone_match else 0.0)
             + 0.50 * token_ratio
         )
-        score += w * sub
+        raw_score += w * sub
         if soundex_match and token_ratio > 0.8:
             parts.append(f"{col} matched phonetically ({int(token_ratio*100)}%)")
         elif token_ratio > 0.7:
             parts.append(f"{col} similar ({int(token_ratio*100)}%)")
         else:
             parts.append(f"{col} differs ({int(token_ratio*100)}%)")
+    # Re-normalise across the weight that actually contributed
+    score = (raw_score / present_weight) if present_weight > 0 else 0.0
     return score, "; ".join(parts)
 
 
@@ -124,13 +135,16 @@ def _apply_survivorship(
 ) -> Any:
     """Apply the first-matching survivorship rule (by precedence) to a column.
 
-    Rules array is expected to already be sorted ascending by precedence.
-    A rule "matches" if its column == col. If no rule matches, defaults to
-    'most recent non-null'.
+    Native dtypes are preserved — values are NOT coerced to strings (except
+    transiently inside Counter for hashing). Numeric, boolean, and timestamp
+    columns survive as their original types so the curated golden record
+    keeps schema fidelity with BigQuery.
     """
-    values = group[col].dropna().astype(str).tolist() if col in group.columns else []
-    values = [v for v in values if v != ""]
-    if not values:
+    if col not in group.columns:
+        return None
+    series = group[col].dropna()
+    series = series[series.astype(str).str.len() > 0]
+    if series.empty:
         return None
 
     applicable = [r for r in rules if r["column"] == col]
@@ -139,23 +153,35 @@ def _apply_survivorship(
     if "most recent" in rule_text or "latest" in rule_text or "newest" in rule_text:
         return _to_python(group.sort_values("ingested_at", ascending=False)[col].iloc[0])
     if "longest" in rule_text:
-        return _to_python(max(values, key=len))
+        # Length only meaningful for string-like; fall back to most-recent otherwise
+        if series.dtype == object or pd.api.types.is_string_dtype(series):
+            return _to_python(max(series.tolist(), key=lambda v: len(str(v))))
+        return _to_python(group.sort_values("ingested_at", ascending=False)[col].iloc[0])
     if "shortest" in rule_text:
-        return _to_python(min(values, key=len))
+        if series.dtype == object or pd.api.types.is_string_dtype(series):
+            return _to_python(min(series.tolist(), key=lambda v: len(str(v))))
+        return _to_python(group.sort_values("ingested_at", ascending=False)[col].iloc[0])
     if "frequent" in rule_text or "most often" in rule_text or "mode" in rule_text or "majority" in rule_text:
-        counts = Counter(values)
+        # Counter needs hashable values; cast to str only for tally
+        as_str = series.astype(str).tolist()
+        counts = Counter(as_str)
         top, _ = counts.most_common(1)[0]
         ties = [v for v, c in counts.items() if c == counts[top]]
         if len(ties) > 1:
             return _to_python(
-                group[group[col].isin(ties)]
+                group[group[col].astype(str).isin(ties)]
                 .sort_values("ingested_at", ascending=False)[col]
                 .iloc[0]
             )
-        return _to_python(top)
+        # Return the ORIGINAL-typed value, not the stringified key
+        return _to_python(
+            group[group[col].astype(str) == top]
+            .sort_values("ingested_at", ascending=False)[col]
+            .iloc[0]
+        )
     if "first" in rule_text or "earliest" in rule_text or "oldest" in rule_text:
         return _to_python(group.sort_values("ingested_at", ascending=True)[col].iloc[0])
-    # default
+    # default: most-recent non-null
     return _to_python(group.sort_values("ingested_at", ascending=False)[col].iloc[0])
 
 
@@ -265,17 +291,29 @@ async def run_pipeline_async(
     clusters = len(set(eids))
     await emit("clustering", "done", clusters=clusters)
 
-    # Stage 7 — survivorship
+    # Build a lookup of pair_meta by record_uid for downstream stages
+    uid_to_idx = {r["record_uid"]: i for i, r in enumerate(rows)}
+
+    # Stage 7 — survivorship & master assembly. ALSO selects a single
+    # "primary" record per cluster (the one that survives into Master);
+    # all other cluster members become Suspects (no double-counting).
     await emit("survivorship", "running")
     await asyncio.sleep(0.3)
     master_records: List[Dict[str, Any]] = []
+    primary_by_eid: Dict[str, str] = {}
     for eid, group in staged.groupby("enterprise_id"):
+        # Primary = first record_uid in this cluster (stable ordering)
+        primary_uid = sorted(group["record_uid"].tolist())[0]
+        primary_by_eid[eid] = primary_uid
+
         record: Dict[str, Any] = {"enterprise_id": eid}
         if len(group) == 1:
             record["match_method"] = "unique"
         else:
+            # Promote to "deterministic" iff ALL key attributes are equal
+            # across every member of the cluster (transitive determinism).
             det_ok = bool(det_cols) and all(
-                group[c].nunique(dropna=True) <= 1 and (group[c].iloc[0] or "") != ""
+                group[c].nunique(dropna=True) <= 1 and bool(group[c].iloc[0])
                 for c in det_cols if c in group.columns
             )
             record["match_method"] = "deterministic" if det_ok else "probabilistic"
@@ -289,34 +327,45 @@ async def run_pipeline_async(
     await emit("survivorship", "done", masters=len(master_records),
                rules_applied=len(survivorship_rules))
 
-    # Build suspect table
+    # Build suspect table — EXCLUDE primaries, EXCLUDE singletons.
+    # One suspect row per non-primary cluster member, pointing to its parent.
+    # Carries lineage (score, reason, explanation, original columns) — but
+    # NOT `match_method` (that classification lives only on the Master).
     suspect_records: List[Dict[str, Any]] = []
+    # best score per non-primary uid
+    best_meta_by_uid: Dict[str, Dict[str, Any]] = {}
     for (i, j), meta in pair_meta.items():
-        a, b = rows[i], rows[j]
-        for src in (a, b):
-            sus = {
-                "parent_enterprise_id": staged.iloc[i]["enterprise_id"],
-                "suspect_record_uid": src["record_uid"],
-                "suspect_score": meta["score"],
-                "suspect_reason": (
-                    f"{meta['method'].title()} match >= {int(threshold*100)}%"
-                ),
-                "match_explanation": meta["explanation"],
-            }
+        for uid in (rows[i]["record_uid"], rows[j]["record_uid"]):
+            prev = best_meta_by_uid.get(uid)
+            if not prev or meta["score"] > prev["score"]:
+                best_meta_by_uid[uid] = meta
+
+    for _, srow in staged.iterrows():
+        uid = srow["record_uid"]
+        eid = srow["enterprise_id"]
+        primary = primary_by_eid.get(eid)
+        cluster_size = (staged["enterprise_id"] == eid).sum()
+        if cluster_size <= 1 or uid == primary:
+            continue
+        meta = best_meta_by_uid.get(uid, {"score": 0.0, "explanation": "", "method": "probabilistic"})
+        reason = _human_suspect_reason(meta, det_cols, prob_cols)
+        sus: Dict[str, Any] = {
+            "parent_enterprise_id": eid,
+            "suspect_record_uid": uid,
+            "suspect_score": meta["score"],
+            "suspect_reason": reason,
+            "match_explanation": meta.get("explanation", ""),
+        }
+        # Original columns (preserve native dtypes)
+        idx = uid_to_idx.get(uid)
+        if idx is not None:
+            src = rows[idx]
             for c in df.columns:
                 if c in ("record_uid", "ingested_at", "enterprise_id"):
                     continue
                 sus[c] = _to_python(src.get(c))
-            sus["ingested_at"] = datetime.now(timezone.utc).isoformat()
-            suspect_records.append(sus)
-
-    # Dedupe suspects by suspect_record_uid (keep highest score)
-    seen: Dict[str, Dict[str, Any]] = {}
-    for s in suspect_records:
-        uid = s["suspect_record_uid"]
-        if uid not in seen or s["suspect_score"] > seen[uid]["suspect_score"]:
-            seen[uid] = s
-    suspect_records = list(seen.values())
+        sus["ingested_at"] = datetime.now(timezone.utc).isoformat()
+        suspect_records.append(sus)
 
     stats = {
         "total_records": n,
@@ -335,6 +384,27 @@ async def run_pipeline_async(
         "suspect": suspect_records,
         "stats": stats,
     }
+
+
+def _human_suspect_reason(
+    meta: Dict[str, Any], det_cols: List[str], prob_cols: List[Dict[str, Any]]
+) -> str:
+    """Plain-English reasoning a data steward can act on directly."""
+    method = meta.get("method", "probabilistic")
+    score = meta.get("score", 0.0)
+    if method == "deterministic":
+        cols = ", ".join(det_cols) if det_cols else "all key attributes"
+        return (
+            f"All key attributes ({cols}) matched the parent record exactly — "
+            f"merged automatically without ambiguity."
+        )
+    prob_label = ", ".join(c["name"] for c in prob_cols) or "the configured attributes"
+    return (
+        f"Fuzzy match against {prob_label} produced a Suspect Score of "
+        f"{score:.1f}% — the agent merged this row into the parent cluster "
+        f"based on phonetic and lexical similarity. Review per-attribute "
+        f"details in the Match Explanation column."
+    )
 
 
 # Backwards-compat sync entry used by tests

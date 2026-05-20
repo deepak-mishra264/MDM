@@ -170,25 +170,59 @@ WITH pairs AS (
 matched_pairs AS (
   SELECT * FROM pairs WHERE score >= {threshold}
 ),
-edge_clusters AS (
-  SELECT uid_a AS uid, uid_b AS cluster_root FROM matched_pairs
+-- Bidirectional edge set + self-loops (so isolated records get their own root)
+edges AS (
+  SELECT uid_a AS u, uid_b AS v FROM matched_pairs
   UNION ALL
-  SELECT uid_b AS uid, uid_a AS cluster_root FROM matched_pairs
+  SELECT uid_b AS u, uid_a AS v FROM matched_pairs
   UNION ALL
   SELECT record_uid, record_uid FROM {fq}.{stg_t}_{job_id}`
 ),
+-- ------------------------------------------------------------
+-- Connected-components via iterative MIN-label propagation
+-- 8 fixed-point iterations cover any chain length up to 2^8 = 256.
+-- Each iteration replaces a node's label with MIN(label) over its
+-- neighbours — guaranteed to converge to MIN(label) of the whole
+-- connected component for chains under 256 hops.
+-- ------------------------------------------------------------
+hop1 AS (SELECT u, MIN(v) AS label FROM edges GROUP BY u),
+hop2 AS (
+  SELECT h.u, MIN(LEAST(h.label, j.label)) AS label
+  FROM hop1 h LEFT JOIN hop1 j ON h.label = j.u GROUP BY h.u
+),
+hop3 AS (
+  SELECT h.u, MIN(LEAST(h.label, j.label)) AS label
+  FROM hop2 h LEFT JOIN hop2 j ON h.label = j.u GROUP BY h.u
+),
+hop4 AS (
+  SELECT h.u, MIN(LEAST(h.label, j.label)) AS label
+  FROM hop3 h LEFT JOIN hop3 j ON h.label = j.u GROUP BY h.u
+),
+hop5 AS (
+  SELECT h.u, MIN(LEAST(h.label, j.label)) AS label
+  FROM hop4 h LEFT JOIN hop4 j ON h.label = j.u GROUP BY h.u
+),
+hop6 AS (
+  SELECT h.u, MIN(LEAST(h.label, j.label)) AS label
+  FROM hop5 h LEFT JOIN hop5 j ON h.label = j.u GROUP BY h.u
+),
+hop7 AS (
+  SELECT h.u, MIN(LEAST(h.label, j.label)) AS label
+  FROM hop6 h LEFT JOIN hop6 j ON h.label = j.u GROUP BY h.u
+),
 final_clusters AS (
-  SELECT uid, MIN(cluster_root) AS enterprise_id FROM edge_clusters GROUP BY uid
+  SELECT h.u AS uid, MIN(LEAST(h.label, j.label)) AS enterprise_id
+  FROM hop7 h LEFT JOIN hop7 j ON h.label = j.u GROUP BY h.u
 ),
 cluster_methods AS (
   SELECT
     fc.enterprise_id,
-    MAX(IF(mp.method = 'deterministic', 1, 0)) AS has_det,
-    MAX(IF(mp.method = 'probabilistic', 1, 0)) AS has_prob,
+    -- Deterministic promotion: ALL key attributes equal & non-null across
+    -- EVERY member of the cluster (transitive determinism, not seed-only).
+{("    CASE WHEN " + " AND ".join([f"COUNT(DISTINCT s.{_sanitize(c)}) <= 1 AND MAX(IF(s.{_sanitize(c)} IS NULL OR s.{_sanitize(c)} = '', 1, 0)) = 0" for c in det_cols]) + " THEN 1 ELSE 0 END AS det_all_equal,") if det_cols else "    0 AS det_all_equal,"}
     COUNT(DISTINCT fc.uid) AS source_count
   FROM final_clusters fc
-  LEFT JOIN matched_pairs mp
-    ON mp.uid_a = fc.uid OR mp.uid_b = fc.uid
+  JOIN {fq}.{stg_t}_{job_id}` s ON s.record_uid = fc.uid
   GROUP BY fc.enterprise_id
 ),
 joined AS (
@@ -200,7 +234,7 @@ SELECT
   j.enterprise_id,
   CASE
     WHEN cm.source_count = 1 THEN 'unique'
-    WHEN cm.has_det = 1 THEN 'deterministic'
+    WHEN cm.det_all_equal = 1 THEN 'deterministic'
     ELSE 'probabilistic'
   END AS match_method,
 {(',' + chr(10)).join(golden_lines) or "  ANY_VALUE(j.record_uid) AS golden_record_uid"},
@@ -208,19 +242,26 @@ SELECT
   CURRENT_TIMESTAMP() AS ingested_at
 FROM joined j
 JOIN cluster_methods cm USING (enterprise_id)
-GROUP BY j.enterprise_id, cm.source_count, cm.has_det;"""
+GROUP BY j.enterprise_id, cm.source_count, cm.det_all_equal;"""
 
     # ---------- 4. Suspect ----------
     explain_terms = []
     for a in prob_cols:
         sc = _sanitize(a["name"])
         explain_terms.append(
-            f"IF(SOUNDEX(a.{sc}) = SOUNDEX(b.{sc}), '{a['name']} matches phonetically; ', '{a['name']} differs; ')"
+            f"IF(SOUNDEX(a.{sc}) = SOUNDEX(p_row.{sc}), '{a['name']} matches phonetically; ', '{a['name']} differs; ')"
         )
     explain_expr = " || ".join(explain_terms) if explain_terms else "'See score'"
 
+    det_label = ", ".join(det_cols) if det_cols else "the key attributes"
+    prob_label = ", ".join(c["name"] for c in prob_cols) if prob_cols else "the configured attributes"
+
     suspect_sql = f"""-- ============================================================
--- STATE 4b: Curated Suspect Table (Duplicates >= threshold)
+-- STATE 4b: Curated Suspect Table (Subordinate cluster members)
+--   * One row per non-primary cluster member
+--   * Carries lineage only (NO match_method — that classification
+--     belongs to the Master golden record)
+--   * suspect_reason is plain-English operational reasoning
 -- ============================================================
 CREATE OR REPLACE TABLE {fq}.{sus_t}`
 PARTITION BY DATE(ingested_at)
@@ -234,31 +275,64 @@ WITH pairs AS (
   FROM {fq}.{stg_t}_{job_id}` a
   JOIN {fq}.{stg_t}_{job_id}` b ON a.record_uid < b.record_uid
 ),
-matched_pairs AS (
-  SELECT * FROM pairs WHERE score >= {threshold}
-),
-edge_clusters AS (
-  SELECT uid_a AS uid, uid_b AS cluster_root FROM matched_pairs
+matched_pairs AS (SELECT * FROM pairs WHERE score >= {threshold}),
+edges AS (
+  SELECT uid_a AS u, uid_b AS v FROM matched_pairs
   UNION ALL
-  SELECT uid_b AS uid, uid_a AS cluster_root FROM matched_pairs
+  SELECT uid_b AS u, uid_a AS v FROM matched_pairs
   UNION ALL
   SELECT record_uid, record_uid FROM {fq}.{stg_t}_{job_id}`
 ),
+hop1 AS (SELECT u, MIN(v) AS label FROM edges GROUP BY u),
+hop2 AS (SELECT h.u, MIN(LEAST(h.label, j.label)) AS label FROM hop1 h LEFT JOIN hop1 j ON h.label = j.u GROUP BY h.u),
+hop3 AS (SELECT h.u, MIN(LEAST(h.label, j.label)) AS label FROM hop2 h LEFT JOIN hop2 j ON h.label = j.u GROUP BY h.u),
+hop4 AS (SELECT h.u, MIN(LEAST(h.label, j.label)) AS label FROM hop3 h LEFT JOIN hop3 j ON h.label = j.u GROUP BY h.u),
+hop5 AS (SELECT h.u, MIN(LEAST(h.label, j.label)) AS label FROM hop4 h LEFT JOIN hop4 j ON h.label = j.u GROUP BY h.u),
+hop6 AS (SELECT h.u, MIN(LEAST(h.label, j.label)) AS label FROM hop5 h LEFT JOIN hop5 j ON h.label = j.u GROUP BY h.u),
+hop7 AS (SELECT h.u, MIN(LEAST(h.label, j.label)) AS label FROM hop6 h LEFT JOIN hop6 j ON h.label = j.u GROUP BY h.u),
 final_clusters AS (
-  SELECT uid, MIN(cluster_root) AS enterprise_id FROM edge_clusters GROUP BY uid
+  SELECT h.u AS uid, MIN(LEAST(h.label, j.label)) AS enterprise_id
+  FROM hop7 h LEFT JOIN hop7 j ON h.label = j.u GROUP BY h.u
+),
+cluster_size AS (
+  SELECT enterprise_id, COUNT(DISTINCT uid) AS sz, MIN(uid) AS primary_uid
+  FROM final_clusters GROUP BY enterprise_id
+),
+-- Best-scoring pair the suspect participated in (drives reason + explanation)
+best_pair AS (
+  SELECT uid, ANY_VALUE(other_uid) AS other_uid, MAX(score) AS score,
+         ANY_VALUE(method) AS method
+  FROM (
+    SELECT uid_a AS uid, uid_b AS other_uid, score, method FROM matched_pairs
+    UNION ALL
+    SELECT uid_b AS uid, uid_a AS other_uid, score, method FROM matched_pairs
+  )
+  GROUP BY uid
 )
 SELECT
   fc.enterprise_id AS parent_enterprise_id,
   a.record_uid AS suspect_record_uid,
-  ROUND(p.score * 100, 2) AS suspect_score,
-  CONCAT(p.method, ' match >= {int(threshold*100)}%') AS suspect_reason,
+  ROUND(bp.score * 100, 2) AS suspect_score,
+  CASE
+    WHEN bp.method = 'deterministic' THEN
+      'All key attributes ({det_label}) matched the parent record exactly — merged automatically without ambiguity.'
+    ELSE
+      CONCAT(
+        'Fuzzy match against {prob_label} produced a Suspect Score of ',
+        CAST(ROUND(bp.score * 100, 1) AS STRING),
+        '% — the agent merged this row into the parent cluster based on phonetic and lexical similarity. ',
+        'See Match Explanation column for per-attribute details.'
+      )
+  END AS suspect_reason,
   {explain_expr} AS match_explanation,
 {(',' + chr(10)).join([f'  a.{_sanitize(c)}' for c in all_input_cols]) or '  a.record_uid'},
   CURRENT_TIMESTAMP() AS ingested_at
-FROM matched_pairs p
-JOIN {fq}.{stg_t}_{job_id}` a ON a.record_uid = p.uid_a
-JOIN {fq}.{stg_t}_{job_id}` b ON b.record_uid = p.uid_b
-JOIN final_clusters fc ON fc.uid = a.record_uid;"""
+FROM {fq}.{stg_t}_{job_id}` a
+JOIN final_clusters fc ON fc.uid = a.record_uid
+JOIN cluster_size cs ON cs.enterprise_id = fc.enterprise_id
+JOIN best_pair bp ON bp.uid = a.record_uid
+LEFT JOIN {fq}.{stg_t}_{job_id}` p_row ON p_row.record_uid = bp.other_uid
+WHERE cs.sz > 1 AND a.record_uid <> cs.primary_uid;"""
 
     # ---------- 5. Search Index ----------
     index_sql = f"""-- ============================================================

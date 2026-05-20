@@ -166,3 +166,12 @@ backend/configs/gcp_service_account.json
 **/gcp_service_account*.json
 **/*service_account*.json
 **/*service-account*.json
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials

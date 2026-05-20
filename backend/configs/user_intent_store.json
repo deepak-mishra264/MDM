@@ -678,6 +678,38 @@
       "survivorship_rules": [],
       "threshold": 0.75,
       "source_file": "demo_customers.csv"
+    },
+    "0967924c0b76": {
+      "job_id": "0967924c0b76",
+      "deterministic_columns": [
+        "email",
+        "phone",
+        "first_name",
+        "last_name"
+      ],
+      "probabilistic_columns": [
+        {
+          "name": "first_name",
+          "weight": 34.0
+        },
+        {
+          "name": "last_name",
+          "weight": 33.0
+        },
+        {
+          "name": "phone",
+          "weight": 33.0
+        }
+      ],
+      "survivorship_rules": [
+        {
+          "column": "ingested_at",
+          "rule": "Latest value",
+          "precedence": 1
+        }
+      ],
+      "threshold": 0.75,
+      "source_file": "data.csv"
     }
   }
 }
