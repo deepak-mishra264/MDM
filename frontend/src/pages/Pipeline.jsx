@@ -148,7 +148,7 @@ export default function Pipeline() {
                   </div>
                   <div className="text-[11px] text-[#5F6368] mono whitespace-nowrap">
                     {s.state === "running" && "running…"}
-                    {durationMs != null && `${durationMs} ms`}
+                    {durationMs != null && `${Math.max(durationMs, 1)} ms`}
                     {s.state === "pending" && "pending"}
                   </div>
                 </div>
@@ -165,14 +165,17 @@ function StageDetail({ stage }) {
   const d = stage.detail || {};
   const items = [];
   if (stage.key === "validating") {
-    if (d.columns) items.push(`${d.columns.length} match column(s): ${d.columns.join(", ")}`);
+    if (d.deterministic) items.push(`Key: ${(d.deterministic || []).join(", ") || "—"}`);
+    if (d.probabilistic) items.push(`Suspect-Score: ${(d.probabilistic || []).join(", ") || "—"}`);
     if (d.rules != null) items.push(`${d.rules} survivorship rule(s)`);
   } else if (stage.key === "standardizing") {
     if (d.rows != null) items.push(`${d.rows} rows normalized`);
   } else if (stage.key === "deterministic") {
     if (d.matches != null) items.push(`${d.matches} exact-match pair(s) found`);
+    if (d.keys) items.push(`on ${(d.keys || []).join(", ")}`);
   } else if (stage.key === "probabilistic") {
     if (d.matches != null) items.push(`${d.matches} fuzzy pair(s) ≥ threshold`);
+    if (d.attrs) items.push(`on ${(d.attrs || []).join(", ")}`);
   } else if (stage.key === "embedding") {
     if (d.note) items.push(d.note);
   } else if (stage.key === "clustering") {
