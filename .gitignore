@@ -160,3 +160,9 @@ credentials.json
 *.pem
 *.key
 .credentials
+
+# Searce MDM secrets — never commit GCP service-account JSON files
+backend/configs/gcp_service_account.json
+**/gcp_service_account*.json
+**/*service_account*.json
+**/*service-account*.json
